@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "free-llm-router",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Rate-limit state lives in one SQLite-backed Durable Object per provider.
+  // Strongly consistent, survives deploys, works on the free plan.
+  "durable_objects": {
+    "bindings": [
+      { "name": "LIMITER", "class_name": "ProviderLimiter" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ProviderLimiter"] }
+  ],
+
+  "observability": { "enabled": true },
+
+  // Workers AI — free 10k neurons/day, no API key, called in-process
+  "ai": { "binding": "AI" }
+
+  // API keys go in as secrets, never in this file:
+  //   npx wrangler secret put GROQ_API_KEY
+  //   npx wrangler secret put GEMINI_API_KEY
+  //   npx wrangler secret put OPENROUTER_API_KEY
+  //   npx wrangler secret put OPENCODE_API_KEY   (optional)
+  //   npx wrangler secret put ROUTER_API_KEY     (optional gateway auth)
+  // Comma-separate multiple keys per provider to multiply capacity.
+}

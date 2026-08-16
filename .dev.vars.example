@@ -1,0 +1,26 @@
+# Copy to .dev.vars for local development (wrangler dev reads it automatically).
+# Comma-separate multiple keys per provider to multiply total capacity.
+
+GROQ_API_KEY=
+GEMINI_API_KEY=
+OPENROUTER_API_KEY=
+OPENCODE_API_KEY=
+CEREBRAS_API_KEY=
+SAMBANOVA_API_KEY=
+NVIDIA_API_KEY=
+MISTRAL_API_KEY=
+
+# Ollama: only needed if you self-host / tunnel your own instance
+# OLLAMA_BASE_URL=https://your-tunnel.example/v1
+# OLLAMA_API_KEY=
+# OLLAMA_MODELS=llama3.2,qwen2.5
+
+# Optional: gate the router itself behind a bearer token
+# ROUTER_API_KEY=change-me
+
+# Optional: override free-tier limits if providers change them
+# Format: PROVIDER_LIMIT where LIMIT is RPM|RPD|TPM|TPD
+# GROQ_RPM=30
+# OPENROUTER_RPD=50
+# ZEN_RPD=100
+# CLOUDFLARE_RPD=200

@@ -1,0 +1,19 @@
+scope:
+  in:
+    - OpenAI-compatible /v1/chat/completions (stream + non-stream) and /v1/models
+    - 11 free providers: groq, gemini, openrouter, zen, opencode, cerebras, sambanova, nvidia, mistral, ollama, cloudflare (Workers AI)
+    - Per-provider/key rate-limit tracking: RPM, RPD, TPM, TPD windows + cooldowns (Durable Object, SQLite-backed)
+    - Automatic failover on 429/401/402/404/5xx/timeout with retry-after parsing
+    - Content-aware routing: vision/audio/reasoning/long-context detection, auto model selection, forced routing ("provider/model", "model@provider")
+    - Multiple keys per provider (comma-separated env) + per-request client key overrides (x-<provider>-api-key headers)
+    - /admin dashboard + /admin/stats JSON + /admin/reset, /health
+    - Optional ROUTER_API_KEY gate, CORS
+  out:
+    - Embeddings, completions (non-chat), image generation, files, fine-tuning
+    - Paid/provider-specific features (caching, structured outputs, tools passthrough is best-effort)
+    - Billing or per-user auth management beyond ROUTER_API_KEY
+    - KV-based state (Durable Objects only)
+assumptions:
+  - Free-tier limits change; all limits env-overridable (GROQ_RPM, GEMINI_RPD, ...)
+  - Zen is IP-limited; keyless providers share one "anonymous" bucket
+  - Ollama requires a reachable base URL (tunnel/hosted) — disabled until OLLAMA_BASE_URL set

@@ -1,0 +1,14 @@
+version:
+  summary: OpenAI-compatible free-LLM aggregator on Cloudflare Workers.
+  problem: >
+    Free LLM tiers (Groq, Gemini, OpenRouter, Zen, Cerebras, ...) each have separate
+    RPM/RPD/TPM limits and keys. Individually they 429 constantly; pooled and tracked
+    they sustain steady usage for free.
+  solution: >
+    Deploy one Worker as an OpenAI-compatible endpoint. A Durable Object tracks each
+    provider bucket's usage windows and cooldowns; the router picks providers that
+    (a) support the request content (vision/audio/reasoning/context), (b) have quota,
+    and (c) are not cooling down, and fails over on 429/5xx.
+  success: >
+    Requests flow through the pool with failover; /admin shows per-provider usage,
+    limits, and reset times; no 429s reach the client while any provider has capacity.

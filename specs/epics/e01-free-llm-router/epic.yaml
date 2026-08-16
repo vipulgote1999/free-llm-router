@@ -1,0 +1,55 @@
+epic_id: e01
+slug: free-llm-router
+title: Free LLM Router MVP
+goal: >
+  One OpenAI-compatible endpoint on Cloudflare Workers that routes to 12 free LLM
+  providers, tracks each provider's RPM/RPD/TPM/TPD limits and cooldowns in a Durable
+  Object, fails over automatically when a provider is exhausted, and picks the right
+  model from request content (vision / audio / reasoning / long context).
+stories:
+  - id: e01s01
+    title: Provider registry with free-tier limits
+    summary: >
+      config.ts with 12 providers (groq, gemini, openrouter, zen, opencode, cerebras,
+      github, sambanova, nvidia, mistral, ollama, cloudflare), researched free-tier
+      limits, model tables with capabilities, env key parsing, per-request key overrides,
+      limit env overrides.
+    status: in_progress
+    verify: npm test && npm run typecheck
+  - id: e01s02
+    title: Rate-limit window math
+    summary: windows.ts pure functions (minute/day windows, custom day anchor) + unit tests.
+    status: pending
+    verify: npm test
+  - id: e01s03
+    title: Durable Object limiter
+    summary: >
+      ProviderLimiter DO: acquire with RPM/RPD/TPM/TPD checks, 429-driven cooldowns,
+      stats/reset ops, SQLite persistence via dirty-flag + alarm flush.
+    status: pending
+    verify: npm run typecheck
+  - id: e01s04
+    title: Content-aware router with failover
+    summary: >
+      detect.ts capability detection (vision/audio/reasoning/long-context), auto model
+      selection, provider/model force syntax; router.ts failover loop over providers and
+      keys, retry-after parsing, streaming passthrough, Workers AI binding path.
+    status: pending
+    verify: npm test && npm run typecheck
+  - id: e01s05
+    title: HTTP surface
+    summary: /v1/chat/completions, /v1/models, /health, CORS, optional ROUTER_API_KEY auth.
+    status: pending
+    verify: npm run typecheck
+  - id: e01s06
+    title: Admin dashboard + stats API
+    summary: /admin HTML dashboard with live usage, limits, reset countdowns, cooldowns; /admin/stats JSON; /admin/reset.
+    status: pending
+    verify: npm run typecheck
+  - id: e01s07
+    title: Tests, README, deploy docs
+    summary: >
+      Vitest suite green, README with deploy steps, secrets, routing table, limit
+      overrides, troubleshooting.
+    status: pending
+    verify: npm test

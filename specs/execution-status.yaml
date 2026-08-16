@@ -1,0 +1,10 @@
+e01:
+  status: completed
+  stories:
+    e01s01: completed   # provider registry + limits
+    e01s02: completed   # window math + tests
+    e01s03: completed   # Durable Object limiter
+    e01s04: completed   # content-aware router + failover
+    e01s05: completed   # HTTP surface (endpoints, CORS, auth)
+    e01s06: completed   # admin dashboard + stats API
+    e01s07: completed   # tests, README, deploy docs
