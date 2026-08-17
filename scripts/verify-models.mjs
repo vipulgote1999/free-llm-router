@@ -78,8 +78,16 @@ const PROVIDERS = {
   groq: { envKey: 'GROQ_API_KEY', url: 'https://api.groq.com/openai/v1/models', auth: 'bearer' },
   gemini: {
     envKey: 'GEMINI_API_KEY',
-    url: 'https://generativelanguage.googleapis.com/v1beta/openai/models',
     auth: 'x-goog-api-key',
+    async fetchModels(env) {
+      // the OpenAI-compat layer has no /models; use the native list
+      const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
+        headers: { 'x-goog-api-key': env.GEMINI_API_KEY },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = await res.json();
+      return (j.models ?? []).map((m) => m.name.replace(/^models\//, ''));
+    },
   },
   cerebras: { envKey: 'CEREBRAS_API_KEY', url: 'https://api.cerebras.ai/v1/models', auth: 'bearer' },
   sambanova: { envKey: 'SAMBANOVA_API_KEY', url: 'https://api.sambanova.ai/v1/models', auth: 'bearer' },
@@ -104,7 +112,10 @@ async function fetchList(env, provider, def) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return def.parse(await res.json());
   }
-  if (def.fetchModels) return def.fetchModels(env);
+  if (def.fetchModels) {
+    if (def.envKey && !env[def.envKey]) return null;
+    return def.fetchModels(env);
+  }
   if (!env[def.envKey]) return null; // no key — skipped
   const headers = { accept: 'application/json' };
   if (def.auth === 'bearer') headers.authorization = `Bearer ${env[def.envKey]}`;

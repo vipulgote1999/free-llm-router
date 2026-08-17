@@ -144,21 +144,21 @@ describe('routeChat end-to-end (mocked DO + upstreams)', () => {
           headers: { 'retry-after': '42' },
         });
       }
-      if (String(url).includes('api.cerebras.ai')) {
-        return upstreamResponse('hello from cerebras');
+      if (String(url).includes('integrate.api.nvidia.com')) {
+        return upstreamResponse('hello from nvidia');
       }
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', fetchMockFn);
 
-    const env = makeEnv({ GROQ_API_KEY: 'g', CEREBRAS_API_KEY: 'c' });
+    const env = makeEnv({ GROQ_API_KEY: 'g', NVIDIA_API_KEY: 'n' });
     const res = await routeChat(makeRequest('llama-70b'), env as never, {
       model: 'llama-70b',
       messages: [{ role: 'user', content: 'hi' }],
     });
 
     expect(res.status).toBe(200);
-    expect(res.headers.get('x-router-provider')).toBe('cerebras');
+    expect(res.headers.get('x-router-provider')).toBe('nvidia');
     // groq bucket:0 is now cooling for ~42s
     const groqBucket = bucketOf('groq', 'key:0');
     expect(groqBucket.cooldownUntil).toBeGreaterThan(Date.now() + 40000);
@@ -172,17 +172,17 @@ describe('routeChat end-to-end (mocked DO + upstreams)', () => {
     vi.stubGlobal(
       'fetch',
       mockFetch((url) =>
-        String(url).includes('api.cerebras.ai')
-          ? upstreamResponse('cerebras again')
+        String(url).includes('integrate.api.nvidia.com')
+          ? upstreamResponse('nvidia again')
           : new Response('nope', { status: 500 }),
       ),
     );
-    const env = makeEnv({ GROQ_API_KEY: 'g', CEREBRAS_API_KEY: 'c' });
+    const env = makeEnv({ GROQ_API_KEY: 'g', NVIDIA_API_KEY: 'n' });
     const res = await routeChat(makeRequest('llama-70b'), env as never, {
       model: 'llama-70b',
       messages: [{ role: 'user', content: 'hi' }],
     });
-    expect(res.headers.get('x-router-provider')).toBe('cerebras');
+    expect(res.headers.get('x-router-provider')).toBe('nvidia');
   });
 
   it('skips buckets in cooldown', async () => {
@@ -190,17 +190,17 @@ describe('routeChat end-to-end (mocked DO + upstreams)', () => {
     vi.stubGlobal(
       'fetch',
       mockFetch((url) =>
-        String(url).includes('api.cerebras.ai')
+        String(url).includes('integrate.api.nvidia.com')
           ? upstreamResponse('post-cooldown')
           : new Response('nope', { status: 500 }),
       ),
     );
-    const env = makeEnv({ GROQ_API_KEY: 'g', CEREBRAS_API_KEY: 'c' });
+    const env = makeEnv({ GROQ_API_KEY: 'g', NVIDIA_API_KEY: 'n' });
     const res = await routeChat(makeRequest('llama-70b'), env as never, {
       model: 'llama-70b',
       messages: [{ role: 'user', content: 'hi' }],
     });
-    expect(res.headers.get('x-router-provider')).toBe('cerebras');
+    expect(res.headers.get('x-router-provider')).toBe('nvidia');
   });
 
   it('returns 503 with per-attempt reset info when everything is exhausted', async () => {

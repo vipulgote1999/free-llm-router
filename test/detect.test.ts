@@ -152,8 +152,8 @@ describe('selectCandidates', () => {
     );
     const ids = cands.map((c) => c.provider.id);
     expect(ids).toContain('groq');
-    expect(ids).toContain('cerebras');
-    expect(ids.indexOf('groq')).toBeLessThan(ids.indexOf('cerebras'));
+    expect(ids).toContain('nvidia');
+    expect(ids.indexOf('groq')).toBeLessThan(ids.indexOf('nvidia'));
     // every candidate resolves the alias to that provider's concrete model
     for (const c of cands) {
       const mm = c.provider.models.find((x) => x.id === c.model);

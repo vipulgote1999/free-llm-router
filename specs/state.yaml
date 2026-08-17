@@ -1,0 +1,14 @@
+session:
+  project: free-llm-router
+  active_flow: sustain
+  active_epic_id: e01
+  active_story_id: null
+  branch: main
+  workflow_mode: solo-git
+  handoff:
+    next_skill: null
+  metrics:
+    story_start: null
+git:
+  remote: null
+  head: 0a3e2eb
