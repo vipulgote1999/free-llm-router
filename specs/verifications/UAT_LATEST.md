@@ -4,6 +4,13 @@ Date: 2026-08-16 · Gate: verify-work · Preflight: `npm test && npm run typeche
 
 ## Automated evidence (run on this machine)
 
+Live smoke test `node scripts/smoke-test.mjs` (one request per model, 2026-08-17):
+- ✅ groq 6/6 · zen 6/6 free · openrouter 13/15 (2 transient) · mistral 5/6 (1 transient 503) · nvidia 6/12 + 4 slow-but-alive
+- ❌→fixed: gemini auth was x-goog-api-key; OpenAI-compat endpoint needs `Authorization: Bearer` (verified 200)
+- ❌→trimmed: zen keyless only serves `*-free` tier (others 401); sambanova non-Llama models need a payment method (402); nvidia kimi-k2.6 not on this account (404)
+- ⚠️ cerebras 402s on this key (payment method required upstream) — provider kept, router cools it via 402 handling
+
+
 | Check | Command | Result |
 |---|---|---|
 | Unit: window math, anchors, rolling | `npx vitest run test/windows.test.ts` | ✅ 8/8 |

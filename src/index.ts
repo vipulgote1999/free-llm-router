@@ -9,7 +9,6 @@
  *   POST /admin/reset           clear limiter state
  */
 
-import type { Ai } from '@cloudflare/workers-types';
 import { ProviderLimiter } from './limiter';
 import { getProviders } from './config';
 import { routeChat } from './router';

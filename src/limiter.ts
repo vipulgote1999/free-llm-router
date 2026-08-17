@@ -42,7 +42,7 @@ function respond(data: unknown, status = 200): Response {
   });
 }
 
-export class ProviderLimiter extends DurableObject<Record<string, unknown>> {
+export class ProviderLimiter extends DurableObject {
   private buckets = new Map<string, BucketState>();
   private dirty = false;
 
