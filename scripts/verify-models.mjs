@@ -56,6 +56,8 @@ const PROVIDERS = {
     url: 'https://opencode.ai/zen/v1/models',
     keyless: true,
     parse: (j) => j.data.map((m) => m.id),
+    // keyless zen only serves the *-free tier (verified live)
+    interesting: (ids) => ids.filter((id) => id.endsWith('-free')),
   },
   cloudflare: {
     envKeys: ['CF_ACCOUNT_ID', 'CF_API_TOKEN'],
@@ -146,6 +148,7 @@ for (const [id, def] of Object.entries(PROVIDERS)) {
     if (def.interesting) added = def.interesting(added);
     if (def.ignore) added = added.filter((m) => !def.ignore.has(m));
     if (id === 'openrouter') console.log(`  (showing only :free NEW models; content-safety classifier ignored)`);
+    if (id === 'zen') console.log(`  (showing only *-free NEW models — keyless tier)`);
 
     console.log(`${header}  upstream models: ${upstream.length}`);
     if (missing.length) {

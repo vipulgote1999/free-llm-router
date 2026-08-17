@@ -129,7 +129,7 @@ describe('selectCandidates', () => {
       .find((mm) => mm.id === c.model)?.capabilities.includes('vision'))).toBe(true);
     expect(cands.some((c) => c.provider.id === 'gemini')).toBe(true);
     expect(cands.some((c) => c.provider.id === 'groq')).toBe(false); // no vision model
-    expect(cands.some((c) => c.provider.id === 'zen')).toBe(true); // zen has vision models now
+    expect(cands.some((c) => c.provider.id === 'nvidia')).toBe(true); // nemotron-vl
   });
 
   it('auto reasoning prefers reasoning models', () => {

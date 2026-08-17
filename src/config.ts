@@ -111,8 +111,9 @@ const PROVIDERS: ProviderConfig[] = [
     ],
   },
   {
-    // Catalog verified live 2026-08: the *-free models are the guaranteed
-    // free tier; the rest is what zen serves keyless (IP-limited).
+    // Catalog verified live 2026-08: keyless zen only serves the *-free
+    // tier — everything else returns 401 Missing API key. Only free models
+    // are registered so the router never wastes hops on key-required ones.
     id: 'zen',
     name: 'OpenCode Zen (keyless)',
     baseUrl: 'https://opencode.ai/zen/v1',
@@ -125,85 +126,24 @@ const PROVIDERS: ProviderConfig[] = [
     weight: 80,
     auto: {
       text: 'deepseek-v4-flash-free',
-      vision: 'gemini-3.5-flash',
+      vision: 'deepseek-v4-flash-free',
       audio: 'deepseek-v4-flash-free',
     },
     models: [
-      // --- explicitly free zen models
-      m('deepseek-v4-flash-free', ['deepseek-free'], ['text'], 131072),
+      m('deepseek-v4-flash-free', ['deepseek-free', 'deepseek-chat'], ['text'], 131072),
       m('mimo-v2.5-free', ['mimo'], ['text'], 131072),
       m('hy3-free', ['hy3'], ['text'], 131072),
       m('nemotron-3-ultra-free', ['nemotron-free'], ['text'], 1000000),
       m('nemotron-3.5-lightning-free', ['nemotron-lightning-free'], ['text'], 1000000),
       m('laguna-s-2.1-free', ['laguna-free'], ['text'], 262144),
-      // --- claude family (vision)
-      m('claude-fable-5', [], ['vision'], 200000),
-      m('claude-opus-5', ['opus'], ['vision', 'reasoning'], 200000),
-      m('claude-opus-4-8', ['opus-4-8'], ['vision'], 200000),
-      m('claude-opus-4-7', ['opus-4-7'], ['vision'], 200000),
-      m('claude-opus-4-6', ['opus-4-6'], ['vision'], 200000),
-      m('claude-opus-4-5', ['opus-4-5'], ['vision'], 200000),
-      m('claude-sonnet-5', ['sonnet'], ['vision', 'reasoning'], 200000),
-      m('claude-sonnet-4-6', ['sonnet-4-6'], ['vision'], 200000),
-      m('claude-sonnet-4-5', ['sonnet-4-5'], ['vision'], 200000),
-      m('claude-sonnet-4', ['claude'], ['vision'], 200000),
-      m('claude-haiku-4-5', ['haiku'], ['vision'], 200000),
-      // --- gemini family (vision)
-      m('gemini-3.6-flash', ['gemini-3.6'], ['vision'], 1048576),
-      m('gemini-3.7-flash', ['gemini-3.7'], ['vision'], 1048576),
-      m('gemini-3.5-flash-lite', [], ['vision'], 1048576),
-      m('gemini-3.5-flash', ['gemini-flash'], ['vision'], 1048576),
-      m('gemini-3.1-pro', ['gemini-pro'], ['vision', 'reasoning'], 1048576),
-      m('gemini-3-flash', [], ['vision'], 1048576),
-      // --- gpt-5 family (vision)
-      m('gpt-5.6-sol', [], ['vision'], 272000),
-      m('gpt-5.6-terra', [], ['vision'], 272000),
-      m('gpt-5.6-luna', ['gpt-5'], ['vision'], 272000),
-      m('gpt-5.5', [], ['vision'], 272000),
-      m('gpt-5.5-pro', [], ['vision'], 272000),
-      m('gpt-5.4', [], ['vision'], 272000),
-      m('gpt-5.4-pro', [], ['vision'], 272000),
-      m('gpt-5.4-mini', ['gpt-mini'], ['vision'], 272000),
-      m('gpt-5.4-nano', ['gpt-nano'], ['vision'], 272000),
-      m('gpt-5.3-codex-spark', [], ['text'], 272000),
-      m('gpt-5.3-codex', [], ['text'], 272000),
-      m('gpt-5.2', [], ['vision'], 272000),
-      m('gpt-5.2-codex', [], ['text'], 272000),
-      m('gpt-5.1', [], ['vision'], 272000),
-      m('gpt-5.1-codex-max', [], ['text'], 272000),
-      m('gpt-5.1-codex', [], ['text'], 272000),
-      m('gpt-5.1-codex-mini', [], ['text'], 272000),
-      m('gpt-5', [], ['vision'], 272000),
-      m('gpt-5-codex', [], ['text'], 272000),
-      m('gpt-5-nano', [], ['vision'], 272000),
-      // --- grok / misc
-      m('grok-build-0.1', [], ['text'], 262144),
-      m('grok-4.6', ['grok'], ['vision'], 262144),
-      m('grok-4.5', ['grok-4'], ['vision'], 262144),
-      m('muse-spark-1.2', ['muse'], ['text'], 131072),
-      // --- deepseek / glm / minimax / kimi / qwen
-      m('deepseek-v4-pro', ['deepseek-pro'], ['reasoning'], 131072),
-      m('deepseek-v4-flash', ['deepseek-chat', 'deepseek-flash'], ['text'], 131072),
-      m('glm-5.2', ['glm'], ['text'], 131072),
-      m('glm-5.1', ['glm-5.1'], ['text'], 131072),
-      m('glm-5', ['glm-5'], ['text'], 131072),
-      m('minimax-m3', [], ['text'], 131072),
-      m('minimax-m2.7', [], ['text'], 131072),
-      m('minimax-m2.5', ['minimax'], ['text'], 131072),
-      m('kimi-k3', ['kimi'], ['text'], 131072),
-      m('kimi-k2.7-code', [], ['text'], 131072),
-      m('kimi-k2.6', ['kimi-k2.6'], ['text'], 131072),
-      m('kimi-k2.5', ['kimi-k2.5'], ['text'], 131072),
-      m('qwen3.6-plus', ['qwen-plus'], ['reasoning'], 131072),
-      m('qwen3.5-plus', ['qwen3.5'], ['text'], 131072),
-      m('big-pickle', [], ['text'], 131072),
     ],
   },
   {
     id: 'gemini',
     name: 'Google Gemini (AI Studio free)',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    auth: 'x-goog-api-key',
+    // the OpenAI-compat layer accepts Bearer, not x-goog-api-key (verified live)
+    auth: 'bearer',
     apiKeyEnv: 'GEMINI_API_KEY',
     keyHeader: 'x-gemini-api-key',
     limits: { rpm: 10, rpd: 250, tpm: 250000, tpd: MAX },
@@ -230,10 +170,19 @@ const PROVIDERS: ProviderConfig[] = [
         rpd: 100,
         tpm: 250000,
       }),
-      m('gemini-2.0-flash', ['gemini-2.0'], ['vision', 'audio', 'text'], 1048576, {
+      m('gemma-4-31b-it', ['gemma-4'], ['vision', 'text'], 262144, {
+        rpm: 10,
+        rpd: 250,
+        tpm: 250000,
+      }),
+      m('gemini-flash-latest', ['flash-latest'], ['vision', 'audio', 'text'], 1048576),
+      m('gemini-flash-lite-latest', ['flash-lite-latest'], ['vision', 'audio', 'text'], 1048576, {
         rpm: 15,
-        rpd: 1500,
-        tpm: 1000000,
+        rpd: 1000,
+      }),
+      m('gemini-pro-latest', ['pro-latest'], ['vision', 'audio', 'text'], 1048576, {
+        rpm: 5,
+        rpd: 100,
       }),
       m('gemini-3-flash-preview', ['gemini-3-flash'], ['vision', 'text'], 1048576, {
         rpm: 10,
@@ -416,7 +365,6 @@ const PROVIDERS: ProviderConfig[] = [
       m('deepseek-ai/deepseek-v4-flash-0731', ['deepseek-chat', 'deepseek-flash'], ['text'], 131072),
       m('google/gemma-4-31b-it', ['gemma-4'], ['text'], 262144),
       m('minimaxai/minimax-m3', ['minimax'], ['text'], 131072),
-      m('moonshotai/kimi-k2.6', ['kimi'], ['text'], 131072),
       m('z-ai/glm-5.2', ['glm'], ['text'], 131072),
       m('meta/muse-glimmer-30b', ['muse'], ['text'], 131072),
       m('meta/llama-3.2-90b-vision-instruct', ['llama-vision-90b'], ['vision'], 131072),
@@ -439,12 +387,9 @@ const PROVIDERS: ProviderConfig[] = [
       audio: 'Meta-Llama-3.3-70B-Instruct',
     },
     models: [
+      // verified live: only the Llama-3.3 endpoint is on the free tier;
+      // DeepSeek/MiniMax/gemma/gpt-oss return 402 PAYMENT_METHOD_REQUIRED
       m('Meta-Llama-3.3-70B-Instruct', ['llama-3.3-70b', 'llama-70b'], ['text'], 131072),
-      m('DeepSeek-V3.1', ['deepseek-v3'], ['reasoning'], 131072),
-      m('DeepSeek-V3.2', ['deepseek-v3.2'], ['reasoning'], 131072),
-      m('MiniMax-M2.7', ['minimax'], ['text'], 131072),
-      m('gemma-4-31B-it', ['gemma-4'], ['text'], 262144),
-      m('gpt-oss-120b', ['gpt-oss'], ['text'], 131072),
     ],
   },
   {
