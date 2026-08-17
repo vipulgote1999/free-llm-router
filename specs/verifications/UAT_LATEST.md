@@ -2,6 +2,14 @@
 
 Date: 2026-08-16 · Gate: verify-work · Preflight: `npm test && npm run typecheck`
 
+## Production (DEPLOYED 2026-08-17)
+
+- Worker: `https://free-llm-router.vipulgote4.workers.dev` (account `2a8877ee76e12b401c68536cd907fad0`)
+- Bindings: LIMITER (Durable Object, SQLite) + AI (Workers AI) ✓
+- Secrets set: GROQ, GEMINI, OPENROUTER, CEREBRAS, SAMBANOVA, NVIDIA, MISTRAL ✓
+- Live checks: /health ✓ · /v1/models (131 models) ✓ · groq forced ✓ · gemini forced (Bearer fix verified in prod) ✓ · Workers AI auto-route ✓ · /admin/stats shows per-provider windows + zen cooldown ✓
+- Known: zen 429s from Cloudflare egress IP (shared datacenter IP) — router cools it automatically; other 9 providers unaffected
+
 ## Automated evidence (run on this machine)
 
 Live smoke test `node scripts/smoke-test.mjs` (one request per model, 2026-08-17):

@@ -1,11 +1,17 @@
 release:
-  version: 0.1.0
+  version: 0.2.0
   name: free-llm-router
-  target: MVP on Cloudflare Workers free plan
+  target: MVP on Cloudflare Workers free plan + benchmark validation
 epics:
   - id: e01
     slug: free-llm-router
     title: Free LLM Router MVP
-    summary: OpenAI-compatible router aggregating 12 free LLM providers with rate-limit tracking, cooldown-aware failover, content-aware routing, and admin dashboard.
+    summary: OpenAI-compatible router aggregating 11 free LLM providers with rate-limit tracking, cooldown-aware failover, content-aware routing, and admin dashboard.
     wsjf: 10
-    status: in_progress
+    status: completed
+  - id: e02
+    slug: benchmark-validation
+    title: Benchmark & Validation Harness
+    summary: Live + offline benchmark suites with thresholds, reports, and improvement findings.
+    wsjf: 8
+    status: completed

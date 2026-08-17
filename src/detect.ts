@@ -6,7 +6,7 @@
 
 import type { ChatPart, ChatRequest, Capability } from './types';
 import type { ProviderConfig } from './types';
-import { PROVIDER_IDS } from './config';
+import { PROVIDER_IDS, isKnownModelId } from './config';
 
 export interface Caps {
   vision: boolean;
@@ -77,20 +77,22 @@ export interface ModelSpec {
 
 /**
  * Parse the client's model field:
- *   "provider/model"  → force provider  (e.g. "groq/llama-3.3-70b-versatile")
  *   "model@provider"  → force provider  (e.g. "llama-70b@cerebras")
+ *   "provider/model"  → force provider  (e.g. "groq/llama-3.3-70b-versatile")
  *   "model"           → any provider that has it (aliases included)
  *   "" / "auto"       → auto-select by content
- * OpenRouter ids contain "/" but their first segment is never a provider id.
+ * Resolution order matters: an exact registered model id wins over the
+ * provider-split heuristic, because OpenRouter ids look like "nvidia/...".
  */
 export function parseModelSpec(requested: string | undefined): ModelSpec {
   if (!requested || requested.trim() === '') return { model: 'auto' };
   const spec = requested.trim();
 
   const at = spec.lastIndexOf('@');
-  if (at > 0) {
+  if (at > 0 && PROVIDER_IDS.has(spec.slice(at + 1))) {
     return { provider: spec.slice(at + 1), model: spec.slice(0, at) };
   }
+  if (isKnownModelId(spec)) return { model: spec };
   const slash = spec.indexOf('/');
   if (slash > 0 && PROVIDER_IDS.has(spec.slice(0, slash))) {
     return { provider: spec.slice(0, slash), model: spec.slice(slash + 1) };
@@ -127,6 +129,12 @@ export function selectCandidates(
         : 0;
     return b.weight + bBoost - (a.weight + aBoost);
   });
+
+  // NOTE (bench-2026-08-17): spreading auto requests across providers was
+  // measured and REVERTED — free tiers are concurrency-limited (mistral
+  // ~1 RPS), so a uniform spread queues on slow providers and hurts burst
+  // p95 (19.3s vs 6.3s weight-ordered). Weight order + 429-failover is the
+  // better strategy; per-provider concurrency caps are a future epic.
 
   const out: Candidate[] = [];
   for (const p of sorted) {

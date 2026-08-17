@@ -439,6 +439,13 @@ const PROVIDERS: ProviderConfig[] = [
 
 export const PROVIDER_IDS = new Set<string>(PROVIDERS.map((p) => p.id));
 
+/** True when the string is a registered model id or alias on any provider. */
+export function isKnownModelId(id: string): boolean {
+  return PROVIDERS.some(
+    (p) => p.models.some((m) => m.id === id || m.aliases.includes(id)),
+  );
+}
+
 // ------------------------------------------------------------------ helpers
 
 function asStr(v: unknown): string | undefined {

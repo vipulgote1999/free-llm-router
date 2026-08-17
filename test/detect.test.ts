@@ -96,6 +96,16 @@ describe('parseModelSpec', () => {
     });
   });
 
+  it('does not confuse @cf model ids with @-force syntax', () => {
+    expect(parseModelSpec('cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast')).toEqual({
+      provider: 'cloudflare',
+      model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    });
+    expect(parseModelSpec('nvidia/nemotron-3-super-120b-a12b:free')).toEqual({
+      model: 'nvidia/nemotron-3-super-120b-a12b:free',
+    });
+  });
+
   it('leaves openrouter-style ids alone', () => {
     expect(parseModelSpec('meta-llama/llama-3.3-70b-instruct:free')).toEqual({
       model: 'meta-llama/llama-3.3-70b-instruct:free',

@@ -1,10 +1,16 @@
 e01:
   status: completed
   stories:
-    e01s01: completed   # provider registry + limits
-    e01s02: completed   # window math + tests
-    e01s03: completed   # Durable Object limiter
-    e01s04: completed   # content-aware router + failover
-    e01s05: completed   # HTTP surface (endpoints, CORS, auth)
-    e01s06: completed   # admin dashboard + stats API
-    e01s07: completed   # tests, README, deploy docs
+    e01s01: completed
+    e01s02: completed
+    e01s03: completed
+    e01s04: completed
+    e01s05: completed
+    e01s06: completed
+    e01s07: completed
+e02:
+  status: completed
+  stories:
+    e02s01: completed   # bench plan + live harness script
+    e02s02: completed   # offline accuracy corpus (12/12)
+    e02s03: completed   # live bench 9/9 + findings

@@ -229,10 +229,14 @@ describe('routeChat end-to-end (mocked DO + upstreams)', () => {
       mockFetch(() => new Response('zen should not be reached', { status: 200 })),
     );
     const env = makeEnv({}); // no keys — cloudflare (AI) then zen
-    const res = await routeChat(makeRequest('auto'), env as never, {
-      model: 'auto',
-      messages: [{ role: 'user', content: 'hi' }],
-    });
+    const res = await routeChat(
+      makeRequest('cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast'),
+      env as never,
+      {
+        model: 'cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+        messages: [{ role: 'user', content: 'hi' }],
+      },
+    );
     expect(res.headers.get('x-router-provider')).toBe('cloudflare');
     const j = (await res.json()) as { choices: { message: { content: string } }[] };
     expect(j.choices[0]?.message.content).toBe('cf-answer');

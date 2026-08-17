@@ -171,7 +171,8 @@ export async function routeChat(
         continue;
       }
       if (status === 402) {
-        await doCall(stub, { op: 'cooldown', bucket: bucket.id, seconds: 300, note: 'no credits' });
+        // no credits / payment required — will not change within the day
+        await doCall(stub, { op: 'cooldown', bucket: bucket.id, seconds: 43200, note: 'no credits (12h cooldown)' });
         attempt.reason = 'no_credits';
         finish('error');
         continue;

@@ -1,0 +1,30 @@
+epic_id: e02
+slug: benchmark-validation
+title: Benchmark & Validation Harness
+goal: >
+  In-depth live + offline validation of the deployed router: latency and router
+  overhead, failover chain behavior, concurrency error rates, streaming TTFT/SSE
+  integrity, and a labeled routing-accuracy corpus — with thresholds, written
+  reports, and improvement findings.
+stories:
+  - id: e02s01
+    title: Benchmark plan + live harness
+    summary: >
+      specs/benchmarks/bench-plan.md + scripts/benchmark.mjs (health, latency,
+      overhead, failover, concurrency, stream suites; JSON/MD reports).
+    status: completed
+    verify: node scripts/benchmark.mjs --skip-live
+  - id: e02s02
+    title: Offline routing accuracy corpus
+    summary: >
+      test/routing-accuracy.test.ts — labeled fixtures for text/vision/audio/
+      reasoning/long-context/forced/alias/unknown-model routing; 100% threshold.
+    status: in_progress
+    verify: npm run bench:accuracy
+  - id: e02s03
+    title: Run live bench + improvement findings
+    summary: >
+      Execute live suites (iters=3, conc=12), record results in
+      specs/verifications/benchmark-results/, summarize improvements.
+    status: pending
+    verify: ls specs/verifications/benchmark-results/bench-*.json
