@@ -11,8 +11,10 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@cloudflare/workerd-linux-arm64": "^1.20260811.1",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "wrangler": "^4.123.0"
   },
   "optionalDependencies": {
     "wrangler": "^4.100.0"
