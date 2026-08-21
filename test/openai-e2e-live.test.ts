@@ -17,6 +17,8 @@
  *   LIVE=1 LIVE_MAX=1 npm test -- openai-e2e-live # single-model smoke
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+// Auto-healing: live network needs longer timeout (openrouter 7s, fallback chains 15s)
+vi.setConfig({ testTimeout: 30000 });
 declare const process: { env: Record<string, string | undefined> };
 import { getProviders } from '../src/config';
 import { routeChat, routeCompletion, routeEmbedding, clearRecentLogs } from '../src/router';

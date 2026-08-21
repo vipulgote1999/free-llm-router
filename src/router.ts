@@ -185,7 +185,7 @@ function classifyErrorForCooldown(status: number, bodyIndicatesContextExceeded: 
   if (status === 429) return { seconds: 60, reason: 'rate_limited', retryable: true };
   if (status === 401 || status === 403) return { seconds: 600, reason: 'auth_error', retryable: true };
   if (status === 402) return { seconds: 43200, reason: 'no_credits', retryable: true };
-  if (status === 404) return { seconds: 300, reason: 'model_unavailable', retryable: true };
+  if (status === 404) return { seconds: 0, reason: 'model_unavailable', retryable: true }; // auto-healing: per-model, no bucket cooldown
   if (status === 408) return { seconds: 30, reason: 'upstream_error', retryable: true };
   if (status >= 500) return { seconds: 30, reason: 'upstream_error', retryable: true };
   if (status === 400 && bodyIndicatesContextExceeded) return { seconds: 30, reason: 'context_exceeded', retryable: true };
@@ -392,7 +392,9 @@ async function routeWithEndpoint(
 
       const res = upstream.res;
       if (!res) {
-        await doCall(stub, { op: 'cooldown', bucket: bucket.id, seconds: 60, note: upstream.reason });
+        // Auto-healing: don't hammer bucket for per-model issues like workers_ai_no_embeddings
+        const noc = upstream.reason === 'workers_ai_no_embeddings' ? 0 : 30;
+        if (noc) await doCall(stub, { op: 'cooldown', bucket: bucket.id, seconds: noc, note: upstream.reason });
         attempt.reason = upstream.reason ?? 'upstream_error';
         finish('error');
         attemptIndex++;
@@ -515,7 +517,7 @@ async function callUpstream(
   // Pass through LiteLLM-style custom headers if present
   // (allow client to set x-title etc. — already allowed via CORS)
 
-  const timeoutMs = Number(env.UPSTREAM_TIMEOUT_MS) || 300_000;
+  const timeoutMs = Number(env.UPSTREAM_TIMEOUT_MS) || 15000;
   // Create upstream body with model override, but preserve every other field verbatim.
   // LiteLLM and OpenAI clients may send fallbacks/num_retries — upstream doesn't know them, strip them.
   const { fallbacks: _fb, fallback: _fb2, num_retries: _nr, ...cleanBody } = body as Record<string, unknown>;
@@ -653,7 +655,7 @@ export async function routeRaw(
           if (cand.provider.auth === 'x-goog-api-key') headers['x-goog-api-key'] = bucket.key;
           else headers['authorization'] = `Bearer ${bucket.key}`;
         }
-        const timeoutMs = Number(env.UPSTREAM_TIMEOUT_MS) || 300_000;
+        const timeoutMs = Number(env.UPSTREAM_TIMEOUT_MS) || 15000;
         const res = await fetch(`${cand.provider.baseUrl}${endpoint}`, {
           method: request.method,
           headers,
@@ -670,7 +672,13 @@ export async function routeRaw(
           continue;
         }
         if ([401, 403, 402, 404, 408].includes(status) || status >= 500) {
-          const map: Record<number, number> = { 401: 600, 403: 600, 402: 43200, 404: 300, 408: 30 };
+          // Auto-healing: 404 is per-model, don't cooldown whole bucket
+          if (status === 404) {
+            attempt.reason = 'model_unavailable';
+            finish('skipped');
+            continue;
+          }
+          const map: Record<number, number> = { 401: 600, 403: 600, 402: 43200, 408: 30 };
           const secs = map[status] ?? 30;
           await doCall(stub, { op: 'cooldown', bucket: bucket.id, seconds: secs, note: `upstream ${status}` });
           attempt.reason = status === 401 || status === 403 ? 'auth_error' : status === 402 ? 'no_credits' : status === 404 ? 'model_unavailable' : 'upstream_error';
