@@ -33,10 +33,10 @@ interface Fixture {
 
 const fixtures: Fixture[] = [
   {
-    name: 'text-only auto → highest-weight text model (cloudflare llama-3.3)',
+    name: 'text-only auto → highest-weight text model (zen big-pickle, opencode first priority)',
     run: () => {
       const cands = selectCandidates(parseModelSpec(undefined), detect(req({ messages: [{ role: 'user', content: 'hi' }] })), providers());
-      return cands[0]?.provider.id === 'cloudflare' && cands[0]?.model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+      return cands[0]?.provider.id === 'zen' && cands[0]?.model === 'big-pickle';
     },
   },
   {

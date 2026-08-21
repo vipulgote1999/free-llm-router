@@ -121,9 +121,10 @@ describe('selectCandidates', () => {
       providers(),
     );
     expect(cands.length).toBeGreaterThan(0);
-    expect(cands[0]?.provider.id).toBe('cloudflare');
-    expect(cands[0]?.model).toBe('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
-    expect(cands[1]?.provider.id).toBe('groq');
+    // Zen (130) is now top priority per dynamic free-model + first-priority requirement
+    expect(cands[0]?.provider.id).toBe('zen');
+    expect(cands[0]?.model).toBe('big-pickle');
+    expect(cands[1]?.provider.id).toBe('opencode');
   });
 
   it('auto vision only returns vision-capable providers', () => {

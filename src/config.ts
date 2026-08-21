@@ -7,6 +7,11 @@
 
 import type { Limits, ModelInfo, ProviderConfig } from './types';
 import { UNLIMITED } from './windows';
+import {
+  isFreeZenModel,
+  modelInfosForFreeIds,
+  parseEnvModelList,
+} from './zen';
 
 const MAX = UNLIMITED;
 
@@ -123,19 +128,22 @@ const PROVIDERS: ProviderConfig[] = [
     // ~100 requests/day per IP on the free tier
     limits: { rpm: 10, rpd: 100, tpm: MAX, tpd: MAX },
     dayAnchorUtc: 0,
-    weight: 80,
+    weight: 130,
     auto: {
       text: 'deepseek-v4-flash-free',
       vision: 'deepseek-v4-flash-free',
       audio: 'deepseek-v4-flash-free',
     },
     models: [
-      m('deepseek-v4-flash-free', ['deepseek-free', 'deepseek-chat'], ['text'], 131072),
+      m('big-pickle', ['pickle'], ['text'], 131072),
+      m('deepseek-v4-flash-free', ['deepseek-free', 'deepseek-chat', 'deepseek'], ['text'], 131072),
+      m('x-preview-f-free', ['x-free', 'x-preview'], ['text'], 131072),
+      m('muse-spark-1.2-contributor-free', ['muse-contributor-free', 'muse-spark'], ['text'], 131072),
       m('mimo-v2.5-free', ['mimo'], ['text'], 131072),
       m('hy3-free', ['hy3'], ['text'], 131072),
-      m('nemotron-3-ultra-free', ['nemotron-free'], ['text'], 1000000),
-      m('nemotron-3.5-lightning-free', ['nemotron-lightning-free'], ['text'], 1000000),
-      m('laguna-s-2.1-free', ['laguna-free'], ['text'], 262144),
+      m('nemotron-3-ultra-free', ['nemotron-free', 'nemotron-ultra'], ['text'], 1000000),
+      m('nemotron-3.5-lightning-free', ['nemotron-lightning-free', 'nemotron-lightning'], ['text'], 1000000),
+      m('laguna-s-2.1-free', ['laguna-free', 'laguna'], ['text'], 262144),
     ],
   },
   {
@@ -268,19 +276,22 @@ const PROVIDERS: ProviderConfig[] = [
     // gateway limits are unpublished — conservative defaults, env-overridable
     limits: { rpm: 20, rpd: 500, tpm: MAX, tpd: MAX },
     dayAnchorUtc: 0,
-    weight: 70,
+    weight: 125,
     auto: {
       text: 'deepseek-v4-flash-free',
       vision: 'gemini-3.5-flash',
       audio: 'deepseek-v4-flash-free',
     },
     models: [
-      m('deepseek-v4-flash-free', ['deepseek-free'], ['text'], 131072),
+      m('big-pickle', ['pickle'], ['text'], 131072),
+      m('deepseek-v4-flash-free', ['deepseek-free', 'deepseek-chat', 'deepseek'], ['text'], 131072),
+      m('x-preview-f-free', ['x-free', 'x-preview'], ['text'], 131072),
+      m('muse-spark-1.2-contributor-free', ['muse-contributor-free', 'muse-spark'], ['text'], 131072),
       m('mimo-v2.5-free', ['mimo'], ['text'], 131072),
       m('hy3-free', ['hy3'], ['text'], 131072),
-      m('nemotron-3-ultra-free', ['nemotron-free'], ['text'], 1000000),
-      m('nemotron-3.5-lightning-free', ['nemotron-lightning-free'], ['text'], 1000000),
-      m('laguna-s-2.1-free', ['laguna-free'], ['text'], 262144),
+      m('nemotron-3-ultra-free', ['nemotron-free', 'nemotron-ultra'], ['text'], 1000000),
+      m('nemotron-3.5-lightning-free', ['nemotron-lightning-free', 'nemotron-lightning'], ['text'], 1000000),
+      m('laguna-s-2.1-free', ['laguna-free', 'laguna'], ['text'], 262144),
       m('claude-fable-5', [], ['vision'], 200000),
       m('claude-opus-5', ['opus'], ['vision', 'reasoning'], 200000),
       m('claude-opus-4-8', [], ['vision'], 200000),
@@ -525,6 +536,36 @@ function resolveProvider(
     const names = parseKeys(asStr(env.OLLAMA_MODELS));
     if (names.length > 0) {
       models = names.map((n) => m(n, [], ['text'], 131072));
+    }
+  }
+
+  // Zen keyless: dynamic free-model pickup. If ZEN_FREE_MODELS is set
+  // (comma-separated, e.g. from a cron that fetched /zen/v1/models),
+  // use it; otherwise fall back to the static registry. Only *-free
+  // plus big-pickle are accepted so paid models are never tried
+  // keyless (they would 401).
+  if (p.id === 'zen') {
+    const envList = parseEnvModelList(asStr(env.ZEN_FREE_MODELS));
+    if (envList.length > 0) {
+      const free = envList.filter(isFreeZenModel);
+      if (free.length > 0) models = modelInfosForFreeIds(free);
+    }
+  }
+
+  // OpenCode (keyed) — same free pool plus paid catalog. If
+  // OPENCODE_FREE_MODELS is set, replace only the free subset
+  // dynamically while keeping the paid models static.
+  if (p.id === 'opencode') {
+    const envList = parseEnvModelList(
+      asStr(env.OPENCODE_FREE_MODELS) ?? asStr(env.ZEN_FREE_MODELS),
+    );
+    if (envList.length > 0) {
+      const free = envList.filter(isFreeZenModel);
+      if (free.length > 0) {
+        const freeInfos = modelInfosForFreeIds(free);
+        const paidInfos = p.models.filter((mm) => !isFreeZenModel(mm.id));
+        models = [...freeInfos, ...paidInfos];
+      }
     }
   }
 
