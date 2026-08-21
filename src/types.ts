@@ -56,7 +56,8 @@ export type ProviderId =
   | 'nvidia'
   | 'mistral'
   | 'ollama'
-  | 'cloudflare';
+  | 'cloudflare'
+  | 'truerouter';
 
 export interface ProviderConfig {
   id: ProviderId;

@@ -446,6 +446,23 @@ const PROVIDERS: ProviderConfig[] = [
       m('gemma3', ['gemma3'], ['vision'], 131072),
     ],
   },
+  {
+    id: 'truerouter',
+    name: 'TrueRouter (TokenRouter free)',
+    baseUrl: 'https://api.tokenrouter.com/v1',
+    auth: 'bearer',
+    apiKeyEnv: 'TRUEROUTER_API_KEY',
+    keyHeader: 'x-truerouter-api-key',
+    // free tier on TokenRouter — conservative defaults, env-overridable
+    limits: { rpm: 20, rpd: 200, tpm: MAX, tpd: MAX },
+    dayAnchorUtc: 0,
+    weight: 50,
+    auto: { text: 'llama3.1:8b', vision: 'llama3.1:8b', audio: 'llama3.1:8b' },
+    models: [
+      m('llama3.1:8b', ['llama3.1', 'llama-8b'], ['text'], 131072),
+      m('qwen2.5-coder:7b', ['qwen2.5-coder', 'qwen-coder'], ['text'], 131072),
+    ],
+  },
 ];
 
 export const PROVIDER_IDS = new Set<string>(PROVIDERS.map((p) => p.id));
@@ -571,6 +588,10 @@ function resolveProvider(
 
   const keys = parseKeys(asStr(env[p.apiKeyEnv]));
 
+  // OpenCode with key gets first priority over keyless zen — separate quota
+  let weight = p.weight;
+  if (p.id === 'opencode' && keys.length > 0) weight = 135;
+
   let disabled = false;
   let disabledReason: string | undefined;
   if (p.id === 'ollama') {
@@ -585,6 +606,7 @@ function resolveProvider(
     ...p,
     baseUrl,
     models,
+    weight,
     limits: { ...p.limits, ...envLimits },
     envLimits,
     disabled,
