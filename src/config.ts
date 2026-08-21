@@ -269,7 +269,7 @@ const PROVIDERS: ProviderConfig[] = [
     // Same catalog as keyless zen, via the keyed gateway (separate quota).
     id: 'opencode',
     name: 'OpenCode Zen (with key)',
-    baseUrl: 'https://api.opencode.ai/zen/v1',
+    baseUrl: 'https://opencode.ai/zen/v1',
     auth: 'bearer',
     apiKeyEnv: 'OPENCODE_API_KEY',
     keyHeader: 'x-opencode-api-key',
