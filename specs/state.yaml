@@ -6,9 +6,9 @@ session:
   branch: main
   workflow_mode: solo-git
   deployment:
-    url: https://free-llm-router.vipulgote4.workers.dev
-    account_id: 2a8877ee76e12b401c68536cd907fad0
-    deployed_at: 2026-08-17
+    url: https://free-llm-router.vipulgote5.workers.dev
+    account_id: ed6fb32a7350321cd036ee4f2f54462a
+    deployed_at: 2026-08-21
   handoff:
     next_skill: null
   metrics:
