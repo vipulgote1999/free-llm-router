@@ -51,6 +51,8 @@ const PROVIDERS: ProviderConfig[] = [
       m('@cf/qwen/qwen2.5-coder-32b-instruct', ['cf-qwen-coder'], ['text'], 131072),
       m('@cf/meta/llama-3.2-11b-vision-instruct', ['cf-llama-vision'], ['vision'], 131072),
       m('@cf/meta/llama-4-scout-17b-16e-instruct', ['cf-llama4-scout'], ['vision'], 131072),
+      m('@cf/baai/bge-base-en-v1.5', ['bge-base', 'bge-embeddings'], ['embeddings'], 512),
+      m('@cf/baai/bge-m3', ['bge-m3'], ['embeddings'], 8192),
     ],
   },
   {
@@ -144,6 +146,7 @@ const PROVIDERS: ProviderConfig[] = [
       m('nemotron-3-ultra-free', ['nemotron-free', 'nemotron-ultra'], ['text'], 1000000),
       m('nemotron-3.5-lightning-free', ['nemotron-lightning-free', 'nemotron-lightning'], ['text'], 1000000),
       m('laguna-s-2.1-free', ['laguna-free', 'laguna'], ['text'], 262144),
+      m('openai/text-embedding-3-small', ['text-embedding-3-small', 'embed-small'], ['embeddings'], 8191),
     ],
   },
   {
@@ -227,6 +230,7 @@ const PROVIDERS: ProviderConfig[] = [
         rpd: 100,
         tpm: 250000,
       }),
+      m('text-embedding-004', ['embedding-004', 'gemini-embed', 'text-embedding'], ['embeddings'], 8192),
     ],
   },
   {
@@ -263,6 +267,7 @@ const PROVIDERS: ProviderConfig[] = [
       m('liquid/lfm-2.5-2.6b:free', ['lfm'], ['text'], 128000),
       m('nvidia/nemotron-nano-12b-v2-vl:free', ['nemotron-vl'], ['vision'], 128000),
       m('nvidia/nemotron-nano-9b-v2:free', ['nemotron-nano-9b'], ['text'], 128000),
+      m('openai/text-embedding-3-small:free', ['text-embedding-3-small', 'text-embedding'], ['embeddings'], 8191),
     ],
   },
   {
@@ -348,6 +353,7 @@ const PROVIDERS: ProviderConfig[] = [
       m('qwen3.6-plus', ['qwen-plus'], ['reasoning'], 131072),
       m('qwen3.5-plus', [], ['text'], 131072),
       m('big-pickle', [], ['text'], 131072),
+      m('openai/text-embedding-3-small', ['text-embedding-3-small', 'embed-small'], ['embeddings'], 8191),
     ],
   },
   {
@@ -379,6 +385,7 @@ const PROVIDERS: ProviderConfig[] = [
       m('z-ai/glm-5.2', ['glm'], ['text'], 131072),
       m('meta/muse-glimmer-30b', ['muse'], ['text'], 131072),
       m('meta/llama-3.2-90b-vision-instruct', ['llama-vision-90b'], ['vision'], 131072),
+      m('nvidia/nv-embedqa-e5-v5', ['nv-embedqa', 'nvidia-embed'], ['embeddings'], 8192),
     ],
   },
   {
@@ -426,6 +433,7 @@ const PROVIDERS: ProviderConfig[] = [
       m('ministral-3b-latest', ['ministral-3b'], ['text'], 131072),
       m('mistral-medium-latest', ['mistral-medium'], ['text'], 131072),
       m('magistral-small-latest', ['magistral'], ['text'], 131072),
+      m('mistral-embed', ['mistral-embed', 'embed-mistral'], ['embeddings'], 8192),
     ],
   },
   {
@@ -444,6 +452,7 @@ const PROVIDERS: ProviderConfig[] = [
       m('llama3.1:8b', ['llama3.1'], ['text'], 131072),
       m('qwen2.5', ['qwen2.5'], ['text'], 32768),
       m('gemma3', ['gemma3'], ['vision'], 131072),
+      m('nomic-embed-text', ['nomic-embed'], ['embeddings'], 8192),
     ],
   },
   {

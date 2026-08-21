@@ -2,9 +2,8 @@
  * Shared types for the router. OpenAI-compatible shapes on the wire.
  */
 
-export type Capability = 'text' | 'vision' | 'audio' | 'reasoning';
+export type Capability = 'text' | 'vision' | 'audio' | 'reasoning' | 'embeddings';
 
-/** A content part inside a message (OpenAI / Gemini style). */
 export interface ChatPart {
   type: string;
   [key: string]: unknown;
@@ -23,6 +22,34 @@ export interface ChatRequest {
   max_tokens?: number;
   max_completion_tokens?: number;
   reasoning_effort?: string;
+  fallbacks?: unknown;
+  num_retries?: number;
+  [key: string]: unknown;
+}
+
+export interface CompletionRequest {
+  model?: string;
+  prompt?: string | string[];
+  stream?: boolean;
+  max_tokens?: number;
+  fallbacks?: unknown;
+  num_retries?: number;
+  [key: string]: unknown;
+}
+
+export interface EmbeddingRequest {
+  model?: string;
+  input?: string | string[] | number[] | number[][];
+  encoding_format?: string;
+  fallbacks?: unknown;
+  num_retries?: number;
+  [key: string]: unknown;
+}
+
+export interface GenericRequest {
+  model?: string;
+  fallbacks?: unknown;
+  num_retries?: number;
   [key: string]: unknown;
 }
 

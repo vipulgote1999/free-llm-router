@@ -1,19 +1,52 @@
-scope:
-  in:
-    - OpenAI-compatible /v1/chat/completions (stream + non-stream) and /v1/models
-    - 11 free providers: groq, gemini, openrouter, zen, opencode, cerebras, sambanova, nvidia, mistral, ollama, cloudflare (Workers AI)
-    - Per-provider/key rate-limit tracking: RPM, RPD, TPM, TPD windows + cooldowns (Durable Object, SQLite-backed)
-    - Automatic failover on 429/401/402/404/5xx/timeout with retry-after parsing
-    - Content-aware routing: vision/audio/reasoning/long-context detection, auto model selection, forced routing ("provider/model", "model@provider")
-    - Multiple keys per provider (comma-separated env) + per-request client key overrides (x-<provider>-api-key headers)
-    - /admin dashboard + /admin/stats JSON + /admin/reset, /health
-    - Optional ROUTER_API_KEY gate, CORS
-  out:
-    - Embeddings, completions (non-chat), image generation, files, fine-tuning
-    - Paid/provider-specific features (caching, structured outputs, tools passthrough is best-effort)
-    - Billing or per-user auth management beyond ROUTER_API_KEY
-    - KV-based state (Durable Objects only)
-assumptions:
-  - Free-tier limits change; all limits env-overridable (GROQ_RPM, GEMINI_RPD, ...)
-  - Zen is IP-limited; keyless providers share one "anonymous" bucket
-  - Ollama requires a reachable base URL (tunnel/hosted) — disabled until OLLAMA_BASE_URL set
+core_value: "Exact OpenAI-compatible gateway with LiteLLM-style failover and a production dashboard — one base_url for every free provider."
+
+summary: |
+  This initiative closes the gap between our current /v1/chat/completions-only router and a true
+  LiteLLM-proxy-equivalent. It delivers (a) exact OpenAI-compatible HTTP surface for the request
+  shapes clients actually send (chat, completions, embeddings, models, with passthrough for
+  tools/response_format/stream/usage/audio/images fields), (b) a hardened fallback engine that
+  matches LiteLLM's retries/fallbacks/context-window semantics with tunable per-error cooldowns,
+  exponential backoff + jitter, and request-level overrides, and (c) a rebuilt admin dashboard
+  showing provider health, latency, success/failure and token usage, fallback chain visualization,
+  and live request logs so operators can see why a request failed over.
+
+  The result is drop-in compatibility: OpenAI SDKs, Vercel AI SDK, LangChain, and existing
+  LiteLLM clients work by changing only base_url. Providers remain data in config.ts; behavior
+  stays in router.ts; limits stay in Durable Objects.
+
+in_scope:
+  - "Exact OpenAI-compatible HTTP surface: POST /v1/chat/completions (+ /chat/completions alias), POST /v1/completions, POST /v1/embeddings, GET /v1/models + GET /v1/models/:id, POST /v1/audio/transcriptions, POST /v1/audio/translations, POST /v1/audio/speech, POST /v1/images/generations (+ /v1/images/edits passthrough). All unknown top-level fields pass through verbatim; streaming SSE is preserved byte-for-byte."
+  - "OpenAI-shaped errors: {error: {message, type, param, code}} with correct status codes (400/401/404/429/503) and retryable vs non-retryable classification matching OpenAI docs."
+  - "Full request body fidelity: temperature/top_p/n/stream/stop/max_tokens/presence_penalty/frequency_penalty/logit_bias/user/response_format/seed/tools/tool_choice/parallel_tool_calls/reasoning_effort etc. are forwarded untouched; response is proxied without JSON re-serialization unless the provider is Cloudflare Workers AI."
+  - "Fallback engine v2: per-error cooldowns (429→Retry-After, 401/403→10m, 402→12h, 404→5m, 408/5xx→30s with exponential backoff + jitter, capped at 60s), configurable num_retries / timeout via env + per-request fallbacks array (LiteLLM-style: {fallbacks: [{model: 'groq/...'}]} or model list), context-window-exceeded (400 with 'context_length_exceeded') triggers fallback to long-context model, and content-aware retry (vision/audio only to capable providers)."
+  - "Dashboard v2: /admin redesign — provider health chips (enabled/disabled/cooldown), per-bucket RPM/RPD/TPM/TPD bars + reset countdowns, latency p50/p95 + success/failure counters from in-memory ring, token usage totals, fallback chain visualization (tried[] with reason/retryAfter), live request log table (last N router_attempt entries), auto-refresh + pause, and JSON at /admin/stats extended with timings and health."
+  - "LiteLLM compatibility helpers: model alias map (e.g. gpt-3.5-turbo -> groq/llama-... via config alias), @provider and provider/model routing preserved, x-router-* headers, fallbacks param handling, num_retries handling, and OPTIONS/CORS parity for browser clients."
+  - "Observability contracts: one JSON line per attempt (router_attempt) plus one per request (router_request) with provider/model/latency/status; Durable Object stats include minuteResetsAt/dayResetsAt/cooldownUntil/lastError unchanged."
+
+out_of_scope:
+  - "Full LiteLLM DB, spend tracking, or virtual-key management — we keep single ROUTER_API_KEY gate only. Deferred: per-user key auth and spend logs."
+  - "Files, fine-tuning, batches, assistants/threads, moderations, vector stores, realtime — explicitly not proxied; returns 404 with OpenAI-shaped error. Rationale: no free provider implements them; proxying would always fail."
+  - "Caching, rate-limit-by-user, or Prometheus metrics export — deferred to post-v2; dashboard covers operator needs."
+  - "Billing/cost estimation — token counts are reported as returned by upstream (no estimation); no $ calculation."
+  - "Migrations beyond v1 Durable Object (new_sqlite_classes already applied)."
+
+constraints:
+  - "Cloudflare Workers + Durable Objects (SQLite) only — no KV, no external DB."
+  - "Pure-logic modules (windows, detect, config) stay Cloudflare-free and unit-tested; router/admin may use Workers APIs."
+  - "Preflight must stay green (npm test && npm run typecheck) before and after every story."
+  - "Deploy via npm run deploy to https://free-llm-router.vipulgote5.workers.dev; Termux can test/typecheck but not run workerd."
+  - "No secrets in repo; keys via wrangler secret / .dev.vars only."
+
+success_criteria:
+  - "curl and OpenAI Python/JS SDKs against /v1/chat/completions, /v1/completions, /v1/embeddings, /v1/models and /v1/models/:id succeed through the router and return upstream-shaped JSON with x-router-provider/model headers."
+  - "stream:true returns valid SSE (text/event-stream) that OpenAI SDKs can consume, including [DONE] terminator passthrough."
+  - "Request with fallbacks:[{model:'groq/llama-...'}] correctly retries the fallback chain on 429/5xx/context_exceeded before returning 503 with tried[]."
+  - "429 with Retry-After header cools the exact bucket for that duration; fallback succeeds on next provider without client retry."
+  - "/admin shows provider health, bars, reset timers, latency p50/p95, success/failure counts, fallback chain, and recent request logs; /admin/stats JSON matches what the dashboard renders."
+  - "vitest suite covers new routes and fallback cases; typecheck passes."
+
+references:
+  - "specs/product/VISION_LATEST.yaml"
+  - "specs/tech-architecture/tech-stack.md"
+  - "src/config.ts, src/router.ts, src/index.ts, src/admin.ts, src/detect.ts"
+  - "https://docs.litellm.ai/docs/proxy/retry_fallbacks and OpenAI API reference (chat/completions, embeddings, models, audio, images)"

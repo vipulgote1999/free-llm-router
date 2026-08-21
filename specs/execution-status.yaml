@@ -11,6 +11,13 @@ e01:
 e02:
   status: completed
   stories:
-    e02s01: completed   # bench plan + live harness script
-    e02s02: completed   # offline accuracy corpus (12/12)
-    e02s03: completed   # live bench 9/9 + findings
+    e02s01: completed
+    e02s02: completed
+    e02s03: completed
+e03:
+  status: completed
+  stories:
+    e03s01: completed  # OpenAI parity HTTP surface (chat/completions/embeddings/models + aliases, SSE, OpenAI errors)
+    e03s02: completed  # LiteLLM fallback v2 (fallbacks param, context_length fallback, backoff+jitter, MAX_RETRIES)
+    e03s03: completed  # Dashboard v2 + stats (health chips, p50/p95, logs ring, fallback chain)
+    e03s04: completed  # Tests + docs (86 tests green, typecheck green)

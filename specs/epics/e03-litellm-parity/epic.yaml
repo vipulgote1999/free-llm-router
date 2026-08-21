@@ -1,0 +1,44 @@
+epic_id: e03
+slug: litellm-parity
+title: LiteLLM-Exact Parity + Fallback + Dashboard v2
+goal: >
+  Deliver exact OpenAI-compatible behavior for every client request shape (chat, completions,
+  embeddings, models, audio, images) routed through the same free-provider pool, harden
+  fallback to LiteLLM semantics (retries, fallbacks param, context-window fallback,
+  per-error backoff), and ship a dashboard that makes provider health and fallback
+  decisions observable — verifiable with SDKs and vitest.
+stories:
+  - id: e03s01
+    title: Exact OpenAI-compatible HTTP surface
+    summary: >
+      Expand index.ts to full OpenAI surface (chat/completions, completions, embeddings,
+      models/:id, audio/*, images/* passthrough); preserve every body field; SSE
+      streaming passthrough; OpenAI-shaped errors; support auto/model aliases and
+      provider/model + model@provider syntax on every endpoint.
+    status: pending
+    verify: npm test && npm run typecheck
+  - id: e03s02
+    title: LiteLLM-style fallback engine v2
+    summary: >
+      router.ts fallback: per-error cooldowns with exponential backoff+jitter, request-level
+      fallbacks array, num_retries handling, context_length_exceeded detection (400->fallback),
+      content-aware candidate filtering preserved, retry-after parsing, configurable
+      UPSTREAM_TIMEOUT_MS and MAX_RETRIES envs.
+    status: pending
+    verify: npm test && npm run typecheck
+  - id: e03s03
+    title: Dashboard v2 + stats API
+    summary: >
+      admin.ts redesign: health chips, RPM/RPD/TPM/TPD bars + resets, latency p50/p95,
+      success/failure counters, token totals, fallback chain (tried), live request log ring,
+      auto-refresh + pause, extended /admin/stats JSON consumed by new HTML.
+    status: pending
+    verify: npm test && npm run typecheck
+  - id: e03s04
+    title: Tests, docs, smoke verification
+    summary: >
+      Add vitest coverage for new routes + fallback (integration with mocked DO + fetch),
+      routing-accuracy extensions, typecheck green, README updated, deployed smoke
+      against live worker (health + models + chat with fallback).
+    status: pending
+    verify: npm test && npm run typecheck

@@ -1,12 +1,12 @@
 release:
-  version: 0.2.0
+  version: 0.3.0
   name: free-llm-router
-  target: MVP on Cloudflare Workers free plan + benchmark validation
+  target: LiteLLM-exact OpenAI parity + fallback hardening + dashboard v2
 epics:
   - id: e01
     slug: free-llm-router
     title: Free LLM Router MVP
-    summary: OpenAI-compatible router aggregating 11 free LLM providers with rate-limit tracking, cooldown-aware failover, content-aware routing, and admin dashboard.
+    summary: OpenAI-compatible router aggregating 12 free LLM providers with rate-limit tracking, cooldown-aware failover, content-aware routing, and admin dashboard.
     wsjf: 10
     status: completed
   - id: e02
@@ -15,3 +15,9 @@ epics:
     summary: Live + offline benchmark suites with thresholds, reports, and improvement findings.
     wsjf: 8
     status: completed
+  - id: e03
+    slug: litellm-parity
+    title: LiteLLM-Exact Parity + Fallback + Dashboard v2
+    summary: Exact OpenAI-compatible surface (chat/completions, embeddings, models, audio, images), LiteLLM-style fallback engine (retries, fallbacks param, context-window fallback, backoff+jitter), and rebuilt dashboard.
+    wsjf: 10
+    status: in_progress
