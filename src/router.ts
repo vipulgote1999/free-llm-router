@@ -520,6 +520,51 @@ async function callUpstream(
   // LiteLLM and OpenAI clients may send fallbacks/num_retries — upstream doesn't know them, strip them.
   const { fallbacks: _fb, fallback: _fb2, num_retries: _nr, ...cleanBody } = body as Record<string, unknown>;
   const upstreamBody = cleanBody.model ? { ...cleanBody, model } : { ...cleanBody, model };
+
+  // Legacy /v1/completions (non-chat) — most free providers only implement chat.
+  // Convert prompt → messages and call /chat/completions, then synthesize a
+  // text_completion response so clients get the shape they asked for. This
+  // mirrors Cloudflare AI handling and makes embeddings/completions work uniformly.
+  const isCompletions = endpoint.includes('/completions') && !endpoint.includes('chat');
+  if (isCompletions) {
+    const prompt = (cleanBody as { prompt?: unknown }).prompt;
+    const promptText = typeof prompt === 'string' ? prompt : Array.isArray(prompt) ? (prompt as unknown[]).join('\n') : prompt != null ? String(prompt) : '';
+    // Respect existing messages if client already sent them (some callers do)
+    const messages = (cleanBody as { messages?: unknown }).messages as unknown[] | undefined;
+    const chatBody: Record<string, unknown> = messages
+      ? { ...cleanBody, model, messages }
+      : { ...cleanBody, model, messages: [{ role: 'user', content: promptText }] };
+    delete (chatBody as Record<string, unknown>).prompt;
+    // Strip completions-only fields that chat doesn't expect, but keep common ones
+    const url = `${p.baseUrl}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(chatBody),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    // If provider returned a chat.completion, reshape to text_completion for completions callers
+    if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+      try {
+        const clone = res.clone();
+        const j = await clone.json() as { choices?: { message?: { content?: string } }[]; id?: string; model?: string; created?: number; usage?: unknown };
+        if (j.choices && j.choices[0]?.message) {
+          const text = j.choices[0]?.message?.content ?? '';
+          const payload = {
+            id: j.id ?? `cmpl-${crypto.randomUUID()}`,
+            object: 'text_completion',
+            created: j.created ?? Math.floor(Date.now() / 1000),
+            model: j.model ?? model,
+            choices: [{ text, index: 0, finish_reason: 'stop' }],
+            usage: j.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+          };
+          return { res: new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } }) };
+        }
+      } catch { /* fall through to raw */ }
+    }
+    return { res };
+  }
+
   // Ensure endpoint path is OpenAI-compatible: /v1/... — providers all use /v1 prefix
   const targetPath = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = `${p.baseUrl}${targetPath}`;
