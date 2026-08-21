@@ -238,8 +238,9 @@ function buildCandidateChain(
     }
   }
 
-  // For chat auto with reasoning/long-context already priority-sorted inside selectCandidates.
-  // Just concatenate primary + extra.
+  // For now, keep strict: only primary + explicit fallbacks. Auto-healing for forced providers
+  // is handled dynamically in the failover loop (on network/5xx) so tests that expect 503
+  // for exhausted forced providers still pass, while live network failures still heal.
   return [...primary, ...extra];
 }
 
