@@ -41,6 +41,8 @@ export interface BucketState {
   day: WindowState;
   cooldownUntil: number;
   lastError?: string;
+  /** per-model cooldowns: modelId -> timestamp ms until which that model is cooling */
+  modelCooldowns?: Record<string, number>;
 }
 
 export function freshBucket(now: number, dayAnchorUtc: number): BucketState {
@@ -48,6 +50,7 @@ export function freshBucket(now: number, dayAnchorUtc: number): BucketState {
     minute: { start: minuteStart(now), requests: 0, tokens: 0 },
     day: { start: dayStart(now, dayAnchorUtc), requests: 0, tokens: 0 },
     cooldownUntil: 0,
+    modelCooldowns: {},
   };
 }
 
@@ -66,6 +69,15 @@ export function rollBucket(
     b.day = { start: dayStart(now, dayAnchorUtc), requests: 0, tokens: 0 };
     changed = true;
   }
+  // prune expired per-model cooldowns so state doesn't grow unbounded
+  if (b.modelCooldowns) {
+    for (const [model, until] of Object.entries(b.modelCooldowns)) {
+      if (until <= now) {
+        delete b.modelCooldowns[model];
+        changed = true;
+      }
+    }
+  }
   return changed;
 }
 
@@ -80,6 +92,7 @@ export function evaluateAcquire(
   tokens: number,
   limits: Limits,
   dayAnchorUtc: number,
+  model?: string,
 ): { result: AcquireResult; rolled: boolean } {
   const rolled = rollBucket(b, now, dayAnchorUtc);
 
@@ -87,6 +100,19 @@ export function evaluateAcquire(
     minuteResetsAt: b.minute.start + MINUTE_MS,
     dayResetsAt: b.day.start + DAY_MS,
   };
+
+  // per-model cooldown takes precedence (model-specific 404)
+  if (model && b.modelCooldowns?.[model] && b.modelCooldowns[model]! > now) {
+    return {
+      rolled,
+      result: {
+        ok: false,
+        reason: 'cooldown',
+        retryAfter: Math.ceil((b.modelCooldowns[model]! - now) / 1000),
+        ...resets,
+      },
+    };
+  }
 
   if (b.cooldownUntil > now) {
     return {
@@ -120,4 +146,21 @@ export function evaluateAcquire(
   b.day.requests += 1;
   b.day.tokens += tokens;
   return { rolled, result: { ok: true, ...resets } };
+}
+
+/** Set a per-model cooldown on a bucket. Returns true if state changed. */
+export function setModelCooldown(
+  b: BucketState,
+  model: string,
+  until: number,
+  note?: string,
+): boolean {
+  if (!b.modelCooldowns) b.modelCooldowns = {};
+  const prev = b.modelCooldowns[model] ?? 0;
+  if (until > prev) {
+    b.modelCooldowns[model] = until;
+    if (note) b.lastError = note;
+    return true;
+  }
+  return false;
 }

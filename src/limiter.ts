@@ -11,6 +11,7 @@ import {
   evaluateAcquire,
   type BucketState,
   freshBucket,
+  setModelCooldown,
 } from './windows';
 import type { AcquireResult, Limits } from './types';
 
@@ -20,10 +21,18 @@ interface AcquireOp {
   tokens: number;
   limits: Limits;
   dayAnchorUtc: number;
+  model?: string;
 }
 interface CooldownOp {
   op: 'cooldown';
   bucket: string;
+  seconds: number;
+  note?: string;
+}
+interface CooldownModelOp {
+  op: 'cooldownModel';
+  bucket: string;
+  model: string;
   seconds: number;
   note?: string;
 }
@@ -33,7 +42,7 @@ interface StatsOp {
 interface ResetOp {
   op: 'reset';
 }
-type LimiterOp = AcquireOp | CooldownOp | StatsOp | ResetOp;
+type LimiterOp = AcquireOp | CooldownOp | CooldownModelOp | StatsOp | ResetOp;
 
 function respond(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -66,6 +75,8 @@ export class ProviderLimiter extends DurableObject {
         return respond(this.acquire(op));
       case 'cooldown':
         return respond(await this.cooldown(op));
+      case 'cooldownModel':
+        return respond(await this.cooldownModel(op as CooldownModelOp));
       case 'stats':
         return respond(this.stats());
       case 'reset':
@@ -91,6 +102,7 @@ export class ProviderLimiter extends DurableObject {
       op.tokens,
       op.limits,
       op.dayAnchorUtc,
+      op.model,
     );
     if (result.ok || rolled) {
       this.dirty = true;
@@ -111,6 +123,20 @@ export class ProviderLimiter extends DurableObject {
     this.dirty = true;
     await this.flush();
     return { ok: true, until: b.cooldownUntil };
+  }
+
+  private async cooldownModel(op: CooldownModelOp): Promise<{ ok: true; until: number }> {
+    const now = Date.now();
+    let b = this.buckets.get(op.bucket);
+    if (!b) {
+      b = freshBucket(now, 0);
+      this.buckets.set(op.bucket, b);
+    }
+    const until = now + op.seconds * 1000;
+    setModelCooldown(b, op.model, until, op.note);
+    this.dirty = true;
+    await this.flush();
+    return { ok: true, until };
   }
 
   private stats(): {

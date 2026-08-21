@@ -122,6 +122,7 @@ export interface BucketState {
   day: WindowState;
   cooldownUntil: number;
   lastError?: string;
+  modelCooldowns?: Record<string, number>;
 }
 
 export interface AcquireResult {

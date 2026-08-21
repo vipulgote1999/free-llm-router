@@ -82,10 +82,22 @@ async function fakeLimiterFetch(provider: string, init: RequestInit): Promise<Re
   const b = bucketOf(provider, String(op.bucket));
   if (op.op === 'acquire') {
     const l = op.limits as { rpm: number; rpd: number };
+    const model = String((op as Record<string, unknown>).model ?? '');
+    // per-model cooldown check (auto-healing: 404 cools only model, not whole bucket)
+    const bAny = b as unknown as { modelCooldowns?: Record<string, number>; cooldownUntil: number };
+    if (model && bAny.modelCooldowns?.[model] && bAny.modelCooldowns[model]! > Date.now()) return json({ ok: false, reason: 'cooldown', retryAfter: 5 });
     if (b.cooldownUntil > Date.now()) return json({ ok: false, reason: 'cooldown', retryAfter: 5 });
     if (b.min.req + 1 > l.rpm || b.day.req + 1 > l.rpd) return json({ ok: false, reason: 'limit', retryAfter: 60 });
     b.min.req += 1; b.day.req += 1;
     return json({ ok: true, minuteResetsAt: Date.now() + 60000, dayResetsAt: Date.now() + 86400000 });
+  }
+  if (op.op === 'cooldownModel') {
+    const m = String((op as Record<string, unknown>).model);
+    const until = Date.now() + Number((op as Record<string, unknown>).seconds) * 1000;
+    const bAny2 = b as unknown as { modelCooldowns?: Record<string, number> };
+    if (!bAny2.modelCooldowns) bAny2.modelCooldowns = {};
+    bAny2.modelCooldowns[m] = Math.max(bAny2.modelCooldowns[m] ?? 0, until);
+    return json({ ok: true });
   }
   if (op.op === 'cooldown') { b.cooldownUntil = Date.now() + Number(op.seconds) * 1000; return json({ ok: true }); }
   if (op.op === 'stats') return json({ buckets: {}, now: Date.now() });

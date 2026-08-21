@@ -363,6 +363,7 @@ async function routeWithEndpoint(
           tokens: estTokens,
           limits: getModelLimits(cand.provider, cand.model),
           dayAnchorUtc: cand.provider.dayAnchorUtc,
+          model: cand.model,
         });
       } catch {
         attempt.reason = 'limiter_error';
@@ -429,12 +430,17 @@ async function routeWithEndpoint(
       }
       const cls = classifyErrorForCooldown(status, isContextExceeded);
       if (cls.retryable) {
-        // Apply exponential backoff for 5xx/408 etc where seconds is base
-        const base = cls.seconds || 30;
-        const withBackoff = base * (1 + Math.min(attemptIndex, 3) * 0.5);
-        const secs = status >= 500 || status === 408 ? jittered(withBackoff) : base;
-        if (secs > 0) {
-          await doCall(stub, { op: 'cooldown', bucket: bucket.id, seconds: secs, note: `upstream ${status}` });
+        // Auto-healing: 404 is per-model, not per-bucket — cooldown only that model
+        if (status === 404) {
+          await doCall(stub, { op: 'cooldownModel', bucket: bucket.id, model: cand.model, seconds: 300, note: `model unavailable upstream (${cand.model})` });
+        } else {
+          // Apply exponential backoff for 5xx/408 etc where seconds is base
+          const base = cls.seconds || 30;
+          const withBackoff = base * (1 + Math.min(attemptIndex, 3) * 0.5);
+          const secs = status >= 500 || status === 408 ? jittered(withBackoff) : base;
+          if (secs > 0) {
+            await doCall(stub, { op: 'cooldown', bucket: bucket.id, seconds: secs, note: `upstream ${status}` });
+          }
         }
         attempt.reason = cls.reason;
         if (status === 402 || status === 404 || status === 401 || status === 403 || status >= 500 || status === 408) {
@@ -635,6 +641,7 @@ export async function routeRaw(
           tokens: 512,
           limits: getModelLimits(cand.provider, cand.model),
           dayAnchorUtc: cand.provider.dayAnchorUtc,
+          model: cand.model,
         });
       } catch {
         attempt.reason = 'limiter_error';
@@ -673,8 +680,9 @@ export async function routeRaw(
           continue;
         }
         if ([401, 403, 402, 404, 408].includes(status) || status >= 500) {
-          // Auto-healing: 404 is per-model, don't cooldown whole bucket
+          // Auto-healing: 404 is per-model, cooldown only that model
           if (status === 404) {
+            await doCall(stub, { op: 'cooldownModel', bucket: bucket.id, model: cand.model, seconds: 300, note: `model unavailable upstream (${cand.model})` });
             attempt.reason = 'model_unavailable';
             finish('skipped');
             continue;
