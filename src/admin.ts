@@ -414,7 +414,7 @@ function renderProviders(rows, now){
   if(!rows.length){tbody.innerHTML='<tr><td colspan="7"><div style="padding:16px; text-align:center; color:var(--ink-soft)">no providers configured</div></td></tr>'; return;}
   var html='';
   for(var i=0;i<rows.length;i++){var p=rows[i]; var ids=Object.keys(p.buckets||{}); var health = p.disabled ? 'disabled' : (ids.some(function(id){return (p.buckets[id].cooldownUntil||0) > now}) ? 'cooldown' : 'ok'); var rowCls = p.disabled ? 'disabled' : health==='cooldown' ? 'cooldown' : '';
-    if(ids.length===0){html += '<tr class="provider-row '+rowCls+'"><td><b>'+p.name+'</b> <span class="muted mono">'+p.provider+'</span> <span class="pill">'+p.weight+'</span> '+(p.disabled? '<span class="badge dis" title="'+(p.disabledReason||'')+'">disabled</span>' : (health==='cooldown'?'<span class="badge cool">cooldown</span>':'<span class="badge ok">ok</span>'))+'<div class="muted" style="font-size:11px; line-height:16px">'+p.models+' models · anchor UTC '+p.dayAnchorUtc+'</div></td><td class="muted">no traffic yet</td><td colspan="5" class="muted">—</td></tr>'; continue;}
+    if(ids.length===0){html += '<tr class="provider-row '+rowCls+'"><td><b>'+esc(p.name)+'</b> <span class="muted mono">'+esc(p.provider)+'</span> <span class="pill">'+p.weight+'</span> '+(p.disabled? '<span class="badge dis" title="'+esc(p.disabledReason||'')+'">disabled</span>' : (health==='cooldown'?'<span class="badge cool">cooldown</span>':'<span class="badge ok">ok</span>'))+'<div class="muted" style="font-size:11px; line-height:16px">'+p.models+' models · anchor UTC '+p.dayAnchorUtc+'</div></td><td class="muted">no traffic yet</td><td colspan="5" class="muted">—</td></tr>'; continue;}
     for(var j=0;j<ids.length;j++){var id=ids[j]; var b=p.buckets[id]; var cd=Math.max(0,(b.cooldownUntil||0)-now); var cdTxt= cd>0 ? '<span class="badge cool">'+fmtSec(Math.ceil(cd/1000))+'</span>' : '<span class="badge ok">clear</span>'; var resetMin = inSec(b.minuteResetsAt, now); var resetDayH = (inSec(b.dayResetsAt, now)/3600).toFixed(1);
       // per-model cooldowns (NEW: 404 now cools only the model, not the whole bucket)
       var modelCdHtml = '';
@@ -433,8 +433,8 @@ function renderProviders(rows, now){
         }
       }
       html += '<tr class="provider-row '+rowCls+'">'
-        + '<td><b>'+p.name+'</b> <span class="muted mono">'+p.provider+'</span> <span class="pill mono">'+id+'</span><div class="muted mono" style="font-size:10px; line-height:16px">w '+p.weight+' · '+p.models+' models</div></td>'
-        + '<td>'+id+'</td>'
+        + '<td><b>'+esc(p.name)+'</b> <span class="muted mono">'+esc(p.provider)+'</span> <span class="pill mono">'+esc(id)+'</span><div class="muted mono" style="font-size:10px; line-height:16px">w '+p.weight+' · '+p.models+' models</div></td>'
+        + '<td>'+esc(id)+'</td>'
         + '<td>'+cell(b.minute.requests, p.limits.rpm)+'<div class="muted mono" style="font-size:10px; line-height:16px">reset '+fmtSec(resetMin)+'</div></td>'
         + '<td>'+cell(b.minute.tokens, p.limits.tpm)+'</td>'
         + '<td>'+cell(b.day.requests, p.limits.rpd)+'<div class="muted mono" style="font-size:10px; line-height:16px">'+resetDayH+'h · '+fmt(b.dayResetsAt)+'</div></td>'
