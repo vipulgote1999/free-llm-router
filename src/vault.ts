@@ -87,7 +87,7 @@ export class VaultDO extends DurableObject {
       case 'login':
         return respond(await this.login(op.password));
       case 'verifySession':
-        return respond(this.verifySession(op.token));
+        return respond(await this.verifySession(op.token));
       case 'logout':
         return respond(await this.logout(op.token));
       case 'createKey':
