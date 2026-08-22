@@ -16,10 +16,10 @@
     "openai": "^7.5.0",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8",
-    "wrangler": "^4.123.0"
+    "wrangler": "^4.123.0",
+    "@cloudflare/workerd-linux-arm64": "^1.20260811.1"
   },
   "optionalDependencies": {
-    "@cloudflare/workerd-linux-arm64": "^1.20260811.1",
     "wrangler": "^4.100.0"
   }
 }
