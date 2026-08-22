@@ -7,30 +7,91 @@
  */
 
 import { ProviderLimiter } from './limiter';
+import { VaultDO, sha256Hex, hashPassword, isValidApiKeyShape, KEY_PREFIX } from './vault';
 import { getProviders } from './config';
 import { routeChat, routeCompletion, routeEmbedding, routeRaw, getRecentLogs } from './router';
-import { DASHBOARD_HTML, collectStats, resetAll } from './admin';
+import { DASHBOARD_HTML, LOGIN_HTML, KEYS_HTML, collectStats, resetAll } from './admin';
 import { corsHeaders, html, json, jsonErr, checkBodySize } from './http';
 import type { ChatRequest } from './types';
 
-export { ProviderLimiter };
+export { ProviderLimiter, VaultDO };
 
 export interface Env {
   LIMITER: DurableObjectNamespace;
+  VAULT: DurableObjectNamespace;
   AI: Ai;
   ROUTER_API_KEY?: string;
   CORS_ORIGIN?: string;
   [key: string]: unknown;
 }
 
-function authorized(request: Request, env: Env): boolean {
-  const key = env.ROUTER_API_KEY;
-  if (!key) return true; // open unless gated — for production set ROUTER_API_KEY
+const SESSION_COOKIE = 'flr_session';
+
+async function vaultFetch<T>(env: Env, payload: unknown): Promise<T> {
+  const stub = env.VAULT.get(env.VAULT.idFromName('vault:global'));
+  const res = await stub.fetch('https://vault/op', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`vault returned ${res.status}`);
+  return (await res.json()) as T;
+}
+
+/** Extract session token from Cookie header. */
+function getSessionToken(request: Request): string | null {
+  const cookie = request.headers.get('cookie') ?? '';
+  const m = cookie.match(new RegExp(`${SESSION_COOKIE}=([A-Za-z0-9_\-]+)`));
+  return m?.[1] ?? null;
+}
+
+/**
+ * Auth resolution order:
+ *  1. Session cookie (dashboard) → verified against VaultDO
+ *  2. Bearer/x-api-key API key → checked against VaultDO (hashed lookup)
+ *  3. Legacy ROUTER_API_KEY env (backward compat / break-glass)
+ * Returns principal description or null.
+ */
+async function authenticate(
+  request: Request,
+  env: Env,
+): Promise<{ via: 'session' | 'apiKey' | 'envKey'; name?: string } | null> {
+  // legacy env key — always accepted (break-glass)
+  const envKey = env.ROUTER_API_KEY;
   const auth = request.headers.get('authorization') ?? '';
-  if (auth === `Bearer ${key}`) return true;
-  if (auth === key) return true;
-  if (request.headers.get('x-api-key') === key) return true;
-  return false;
+  const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  const xkey = request.headers.get('x-api-key') ?? '';
+
+  // 1. session
+  const token = getSessionToken(request);
+  if (token) {
+    try {
+      const r = await vaultFetch<{ ok: boolean }>(env, { op: 'verifySession', token });
+      if (r.ok) return { via: 'session', name: 'admin-session' };
+    } catch { /* vault down — fall through */ }
+  }
+
+  // 2. api keys from vault (bearer or x-api-key)
+  for (const candidate of [bearer, xkey]) {
+    if (candidate && isValidApiKeyShape(candidate)) {
+      try {
+        const r = await vaultFetch<{ ok: boolean; record?: { name?: string; prefix?: string } }>(env, { op: 'checkKey', key: candidate });
+        if (r.ok) {
+          // touch usage async fire-and-forget is fine here
+          void vaultFetch(env, { op: 'touchKey', key: candidate }).catch(() => {});
+          return { via: 'apiKey', name: r.record?.name ?? r.record?.prefix };
+        }
+      } catch { /* fall through */ }
+    }
+  }
+
+  // 3. legacy env key
+  if (envKey) {
+    if ((auth === `Bearer ${envKey}` || auth === envKey || xkey === envKey) && envKey.length > 0) {
+      return { via: 'envKey', name: 'legacy-key' };
+    }
+    return null; // key set but not matched — deny (do NOT fall through to open)
+  }
+  return null;
 }
 
 function isAdminPath(path: string): boolean {
@@ -179,14 +240,124 @@ export default {
       );
     }
 
-    // ---- gated (auth) ----
-    // Production: set ROUTER_API_KEY to gate all non-public routes. Admin is always gated if key is set.
-    if (!authorized(request, env)) {
-      return jsonErr(401, 'invalid ROUTER_API_KEY — provide Authorization: Bearer <key>', undefined, { type: 'authentication_error', code: 'invalid_api_key' });
+    // ---- login page + auth API (public) ----
+    if (path === '/login' && request.method === 'GET') {
+      return html(LOGIN_HTML, true);
     }
-    // Additional admin hardening: even if ROUTER_API_KEY is not set, we still want to avoid leaking stats to public.
-    // For now, allow open admin when no key (backward compat), but log a warning. In production, set the key.
-    // (No code change needed — authorized() returns true when no key, so admin stays open for open routers.)
+    if (path === '/v1/auth/status' && request.method === 'GET') {
+      try {
+        const st = await vaultFetch<{ hasMaster: boolean; lockedForSec?: number }>(env, { op: 'stats' });
+        return json({ initialized: st.hasMaster, lockedForSec: st.lockedForSec ?? 0 }, { headers: secCors, isAdmin: true });
+      } catch {
+        return json({ initialized: false, lockedForSec: 0 }, { headers: secCors });
+      }
+    }
+    if ((path === '/v1/auth/init' || path === '/v1/auth/login' || path === '/v1/auth/logout' || path === '/v1/auth/change-password' || path === '/v1/auth/keys' || path.startsWith('/v1/auth/keys/')) && request.method === 'POST') {
+      const sizeErr = checkBodySize(request, false);
+      if (sizeErr) return sizeErr;
+      let body: Record<string, unknown> = {};
+      try {
+        body = (await request.json()) as Record<string, unknown>;
+      } catch { /* allow empty for logout */ }
+
+      // init — first-run master password setup
+      if (path === '/v1/auth/init') {
+        const pw = String(body.password ?? '');
+        if (typeof pw !== 'string' || pw.length < 8) return jsonErr(400, 'password must be at least 8 characters', undefined, { code: 'weak_password' });
+        const hash = await hashPassword(pw);
+        const r = await vaultFetch<{ ok: boolean; reason?: string }>(env, { op: 'init', masterHash: hash });
+        if (!r.ok) return jsonErr(409, r.reason ?? 'already initialized', undefined, { code: 'already_initialized' });
+        return json({ ok: true }, { headers: secCors });
+      }
+
+      // login → session cookie
+      if (path === '/v1/auth/login') {
+        const pw = String(body.password ?? '');
+        const r = await vaultFetch<{ ok: boolean; reason?: string; token?: string; expiresAt?: number }>(env, { op: 'login', password: pw });
+        if (!r.ok) return jsonErr(401, r.reason ?? 'invalid credentials', undefined, { type: 'authentication_error', code: 'invalid_credentials' });
+        const headers = new Headers(secCors);
+        headers.set('content-type', 'application/json; charset=utf-8');
+        headers.append('set-cookie', `${SESSION_COOKIE}=${r.token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`);
+        headers.append('cache-control', 'no-store');
+        return new Response(JSON.stringify({ ok: true, expiresAt: r.expiresAt }), { status: 200, headers });
+      }
+
+      // everything below requires a valid session
+      const token = getSessionToken(request);
+      let sessionOk = false;
+      if (token) {
+        try {
+          const v = await vaultFetch<{ ok: boolean }>(env, { op: 'verifySession', token });
+          sessionOk = !!v.ok;
+        } catch { /* fallthrough */ }
+      }
+      if (!sessionOk) {
+        return jsonErr(401, 'admin session required — login at /login', undefined, { type: 'authentication_error', code: 'session_required' });
+      }
+
+      if (path === '/v1/auth/logout') {
+        if (token) await vaultFetch(env, { op: 'logout', token });
+        const headers = new Headers({ ...secCors, 'content-type': 'application/json; charset=utf-8' });
+        headers.append('set-cookie', `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`);
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+      }
+      if (path === '/v1/auth/change-password') {
+        const oldPw = String(body.oldPassword ?? '');
+        const newPw = String(body.newPassword ?? '');
+        const r = await vaultFetch<{ ok: boolean; reason?: string }>(env, { op: 'changePassword', oldPassword: oldPw, newPassword: newPw });
+        if (!r.ok) return jsonErr(400, r.reason ?? 'change failed', undefined, { code: 'change_failed' });
+        return json({ ok: true }, { headers: secCors });
+      }
+      if (path === '/v1/auth/keys') {
+        const name = String(body.name ?? 'default').slice(0, 100);
+        const scope = body.scope === 'admin' ? 'admin' : 'api';
+        const r = await vaultFetch<{ ok: boolean; key?: string; record?: unknown }>(env, { op: 'createKey', name, scope });
+        if (!r.ok) return jsonErr(500, 'key creation failed', undefined, { code: 'create_failed' });
+        // plaintext shown exactly once
+        return json({ ok: true, key: r.key, record: r.record }, { headers: secCors, isAdmin: true });
+      }
+      if (path.startsWith('/v1/auth/keys/')) {
+        const action = path.split('/').pop();
+        const hash = String((body as { hash?: string }).hash ?? '');
+        if (!hash) return jsonErr(400, '`hash` required', undefined, { code: 'missing_hash' });
+        // client sends prefix (hash never leaves the vault)
+        const prefix = String((body as { prefix?: string }).prefix ?? '');
+        if (!prefix) return jsonErr(400, '`prefix` required', undefined, { code: 'missing_prefix' });
+        if (action === 'revoke') {
+          await vaultFetch(env, { op: 'revokeKeyByPrefix', prefix });
+          return json({ ok: true }, { headers: secCors });
+        }
+        if (action === 'delete') {
+          await vaultFetch(env, { op: 'deleteKeyByPrefix', prefix });
+          return json({ ok: true }, { headers: secCors });
+        }
+        return jsonErr(404, 'unknown key action', undefined, { code: 'not_found' });
+      }
+    }
+    if (path === '/v1/auth/keys' && request.method === 'GET') {
+      const token = getSessionToken(request);
+      if (!token) return jsonErr(401, 'admin session required', undefined, { type: 'authentication_error', code: 'session_required' });
+      try {
+        const v = await vaultFetch<{ ok: boolean }>(env, { op: 'verifySession', token });
+        if (!v.ok) return jsonErr(401, 'session expired', undefined, { code: 'session_expired' });
+      } catch {
+        return jsonErr(503, 'vault unavailable', undefined, { code: 'vault_down' });
+      }
+      const r = await vaultFetch<{ keys: unknown[] }>(env, { op: 'listKeys' });
+      return json({ keys: r.keys }, { headers: secCors, isAdmin: true });
+    }
+
+    // ---- keys management page (dashboard for API keys) ----
+    if (path === '/keys' || path === '/keys/') {
+      return html(KEYS_HTML, true);
+    }
+
+
+    // ---- auth (vault-first, env-key fallback) ----
+    const principal = await authenticate(request, env);
+    if (!principal) {
+      return jsonErr(401, 'unauthorized — provide Authorization: Bearer sk-fr-… key or login at /login', undefined, { type: 'authentication_error', code: 'invalid_api_key' });
+    }
 
     // ---- models ----
     if ((path === '/v1/models' || path === '/models') && request.method === 'GET') {

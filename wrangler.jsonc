@@ -9,11 +9,13 @@
   // Strongly consistent, survives deploys, works on the free plan.
   "durable_objects": {
     "bindings": [
-      { "name": "LIMITER", "class_name": "ProviderLimiter" }
+      { "name": "LIMITER", "class_name": "ProviderLimiter" },
+      { "name": "VAULT", "class_name": "VaultDO" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["ProviderLimiter"] }
+    { "tag": "v1", "new_sqlite_classes": ["ProviderLimiter"] },
+    { "tag": "v2", "new_sqlite_classes": ["VaultDO"] }
   ],
 
   "observability": { "enabled": true },

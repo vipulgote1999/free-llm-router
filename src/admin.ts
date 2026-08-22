@@ -469,3 +469,211 @@ load(); setAuto(true);
 </script>
 </body>
 </html>`;
+
+// -------------------------------------------------------------------- LOGIN + KEYS pages (same grid)
+
+const PAGE_CSS = `
+:root{--cols:12;--bl:8px;--lh:24px;--gutter:24px;--margin:48px;--pad:48px;--maxw:1100px;
+--paper:#ffffff;--ink:#0f1419;--ink-soft:#5b6066;--line:#e6e8eb;--accent:#e4002b;--green:#0a7a42;--panel:#f8f9fa}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:Inter,system-ui,sans-serif;font-size:15px;line-height:24px;-webkit-font-smoothing:antialiased}
+.wrap{position:relative;max-width:var(--maxw);margin:0 auto;padding:var(--pad) var(--margin)}
+.grid{display:grid;grid-template-columns:repeat(var(--cols),1fr);column-gap:var(--gutter);row-gap:24px}
+.band{grid-column:1/-1;display:grid;grid-template-columns:subgrid;column-gap:var(--gutter);row-gap:24px;align-items:start}
+@supports not (grid-template-columns:subgrid){.band{grid-template-columns:repeat(var(--cols),1fr)}}
+.kicker{font-family:"Space Mono",monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0;line-height:16px}
+h1.masthead{font-size:44px;line-height:40px;font-weight:900;letter-spacing:-.03em;margin:8px 0 0;text-transform:uppercase}
+.card{border:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:10px;background:#fff}
+label{font-family:"Space Mono",monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft)}
+input{width:100%;padding:10px 12px;border:1px solid var(--line);font:15px Inter,sans-serif;background:#fff}
+input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+button{appearance:none;background:var(--ink);color:#fff;border:1px solid var(--ink);padding:10px 16px;font-family:"Space Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+button:hover{background:#1a2330} button.accent{background:var(--accent);border-color:var(--accent)}
+button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+.msg{font-family:"Space Mono",monospace;font-size:12px;min-height:18px;line-height:16px}
+.err{color:var(--accent)}.ok{color:var(--green)}
+.folio{font-family:"Space Mono",monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:8px;margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{font-family:"Space Mono",monospace;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft)}
+.pill{font-family:"Space Mono",monospace;font-size:10px;padding:3px 7px;border:1px solid var(--line)}
+.badge-ok{color:var(--green);border-color:rgba(10,122,66,.35)}.badge-rev{color:var(--accent);border-color:rgba(228,0,43,.3)}
+.keybox{font-family:"Space Mono",monospace;font-size:13px;background:var(--panel);border:1px dashed var(--accent);padding:12px;word-break:break-all}
+a{color:var(--ink);text-decoration:none;border-bottom:2px solid var(--accent)}`;
+
+function pageShell(title: string, bodyInner: string, script: string): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title}</title><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>${PAGE_CSS}</style></head><body><div class="wrap">${bodyInner}</div>
+<script>
+/* escape helper — all dynamic HTML goes through esc() */
+var esc = function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');};
+${script}
+</script></body></html>`;
+}
+
+export const LOGIN_HTML = pageShell('free-llm-router — login', `
+<div class="band">
+  <div style="grid-column:1/7">
+    <p class="kicker">Credential vault · secure access</p>
+    <h1 class="masthead">LOGIN</h1>
+    <p style="color:var(--ink-soft);max-width:32em">Master password unlocks the vault to manage API keys.
+    Sessions last 24h · PBKDF2-SHA256 · lockout after 5 failed attempts.</p>
+  </div>
+  <div style="grid-column:7/13">
+    <div class="card">
+      <form id="f">
+        <label for="pw">master password</label>
+        <input type="password" id="pw" name="password" minlength="8" required autocomplete="current-password">
+        <button class="accent" type="submit">Sign in →</button>
+        <div class="msg" id="msg"></div>
+      </form>
+      <div id="initBox" style="display:none;border-top:1px solid var(--line);padding-top:12px">
+        <p style="margin:0 0 8px" class="kicker">First run — set master password</p>
+        <label for="pw2">new master password (min 8 chars)</label>
+        <input type="password" id="pw2" minlength="8">
+        <button id="initBtn" class="ghost">Initialize vault</button>
+        <div class="msg" id="msg2"></div>
+      </div>
+      <div class="folio"><a href="/admin">← dashboard</a> · <a href="/">api docs</a></div>
+    </div>
+  </div>
+</div>`, `
+async function jpost(url, body){
+  const r = await fetch(url, {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body||{})});
+  let data = {};
+  try { data = await r.json(); } catch(e){}
+  return { status: r.status, data };
+}
+(async function init(){
+  const st = await fetch('/v1/auth/status').then(function(r){return r.json()}).catch(function(){return {initialized:false}});
+  if(!st.initialized){ document.getElementById('initBox').style.display='block'; }
+})();
+document.getElementById('f').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const msg = document.getElementById('msg');
+  msg.className='msg'; msg.textContent='signing in…';
+  const pw = document.getElementById('pw').value;
+  const res = await jpost('/v1/auth/login', {password:pw});
+  if(res.status===200 && res.data.ok){
+    msg.textContent='✓ signed in — redirecting…'; msg.classList.add('ok');
+    setTimeout(function(){ location.href='/keys'; }, 500);
+  } else {
+    msg.textContent='× '+(res.data.reason||res.data.error?.message||'login failed');
+    msg.classList.add('err');
+  }
+});
+document.getElementById('initBtn').addEventListener('click', async function(){
+  const msg = document.getElementById('msg2');
+  const pw = document.getElementById('pw2').value;
+  if(pw.length < 8){ msg.className='msg err'; msg.textContent='× min 8 characters'; return; }
+  const res = await jpost('/v1/auth/init', {password:pw});
+  if(res.status===200 || res.data.ok){
+    msg.textContent='✓ vault initialized — now sign in'; msg.classList.add('ok');
+    document.getElementById('initBox').style.display='none';
+  } else {
+    msg.textContent='× '+(res.data.reason||'init failed'); msg.classList.add('err');
+  }
+});
+`);
+
+export const KEYS_HTML = pageShell('free-llm-router — api keys', `
+<div class="band">
+  <div style="grid-column:1/8">
+    <p class="kicker">Credential vault</p>
+    <h1 class="masthead">API KEYS</h1>
+    <p style="color:var(--ink-soft)">Keys are stored SHA-256 hashed — plaintext is shown exactly once at creation.
+    Use as <code>Authorization: Bearer sk-fr-…</code>.</p>
+  </div>
+  <div style="grid-column:8/13;display:flex;flex-direction:column;gap:12px">
+    <div class="card">
+      <label for="kname">key name</label>
+      <input id="kname" placeholder="e.g. my-laptop, ci-bot" maxlength="100">
+      <label for="kscope">scope</label>
+      <select id="kscope" style="width:100%;padding:10px 12px;border:1px solid var(--line);font:15px Inter">
+        <option value="api">api (chat/completions)</option>
+        <option value="admin">admin (includes dashboard)</option>
+      </select>
+      <button id="createBtn" class="accent">+ Generate new key</button>
+      <div class="msg" id="createMsg"></div>
+      <div id="newKeyBox" style="display:none">
+        <p class="kicker" style="margin:8px 0 4px">Copy now — shown once!</p>
+        <div class="keybox" id="newKey"></div>
+        <button class="ghost" id="copyBtn" style="margin-top:8px">Copy to clipboard</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="folio" style="border:0;padding:0;margin:0"><a href="/admin">dashboard</a> · <a href="#" id="logout">logout</a></div>
+    </div>
+  </div>
+</div>
+
+<div class="band" style="margin-top:24px">
+  <div style="grid-column:1/13" class="card">
+    <p class="kicker">Existing keys</p>
+    <div style="overflow:auto">
+      <table>
+        <thead><tr><th>name</th><th>prefix</th><th>scope</th><th>created</th><th>last used</th><th>status</th><th>actions</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="7">loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>`, `
+function fmt(ts){ return ts ? new Date(ts).toISOString().slice(0,16).replace('T',' ') : '—'; }
+async function load(){
+  const tbody = document.getElementById('rows');
+  try {
+    const r = await fetch('/v1/auth/keys');
+    if(r.status===401){ location.href='/login'; return; }
+    const d = await r.json();
+    const keys = d.keys||[];
+    if(!keys.length){ tbody.innerHTML='<tr><td colspan="7" style="color:var(--ink-soft)">no keys yet — generate one above</td></tr>'; return; }
+    tbody.innerHTML = keys.map(function(k){
+      const st = k.revoked ? '<span class="pill badge-rev">revoked</span>' : '<span class="pill badge-ok">active</span>';
+      const actions = k.revoked
+        ? '<button class="ghost" data-del="'+esc(k.prefix)+'">delete</button>'
+        : '<button class="ghost" data-rev="'+esc(k.prefix)+'">revoke</button>';
+      // we use prefix as the client-side handle; server matches by hash via /listKeys mapping is not exposed,
+      // so revoke/delete send prefix and server resolves it from a prefix->hash listing op.
+      return '<tr><td>'+esc(k.name)+'</td><td class="mono">'+esc(k.prefix)+'…</td><td>'+esc(k.scope||'api')+'</td>'
+        +'<td>'+fmt(k.createdAt)+'</td><td>'+fmt(k.lastUsedAt)+'</td><td>'+st+'</td><td>'+actions+'</td></tr>';
+    }).join('');
+    // wire buttons
+    tbody.querySelectorAll('[data-rev]').forEach(function(b){ b.addEventListener('click', function(){ keyAction('revoke', b.getAttribute('data-rev')); }); });
+    tbody.querySelectorAll('[data-del]').forEach(function(b){ b.addEventListener('click', function(){ keyAction('delete', b.getAttribute('data-del')); }); });
+  } catch(e){
+    tbody.innerHTML='<tr><td colspan="7" class="err">failed to load: '+esc(String(e))+'</td></tr>';
+  }
+}
+async function keyAction(action, prefix){
+  if(action==='delete' && !confirm('Permanently delete key '+prefix+'…?')) return;
+  const r = await fetch('/v1/auth/keys/'+action, {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({prefix:prefix})});
+  if(r.status===401){ location.href='/login'; return; }
+  load();
+}
+document.getElementById('createBtn').addEventListener('click', async function(){
+  const name = document.getElementById('kname').value || 'default';
+  const scope = document.getElementById('kscope').value;
+  const msg = document.getElementById('createMsg');
+  msg.className='msg'; msg.textContent='generating…';
+  const r = await fetch('/v1/auth/keys', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({name:name, scope:scope})});
+  if(r.status===401){ location.href='/login'; return; }
+  const d = await r.json();
+  if(d.ok && d.key){
+    document.getElementById('newKeyBox').style.display='block';
+    document.getElementById('newKey').textContent = d.key;
+    msg.textContent='✓ key created'; msg.classList.add('ok');
+    document.getElementById('copyBtn').onclick = function(){
+      navigator.clipboard.writeText(d.key).then(function(){ msg.textContent='✓ copied'; });
+    };
+    load();
+  } else {
+    msg.textContent='× creation failed'; msg.classList.add('err');
+  }
+});
+document.getElementById('logout').addEventListener('click', async function(e){
+  e.preventDefault();
+  await fetch('/v1/auth/logout',{method:'POST'});
+  location.href='/login';
+});
+load();
+`);
