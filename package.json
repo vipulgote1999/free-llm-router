@@ -13,12 +13,13 @@
     "bench:accuracy": "vitest run test/routing-accuracy.test.ts"
   },
   "devDependencies": {
+    "openai": "^7.5.0",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8",
     "wrangler": "^4.123.0"
   },
   "optionalDependencies": {
-    "wrangler": "^4.100.0",
-    "@cloudflare/workerd-linux-arm64": "^1.20260811.1"
+    "@cloudflare/workerd-linux-arm64": "^1.20260811.1",
+    "wrangler": "^4.100.0"
   }
 }

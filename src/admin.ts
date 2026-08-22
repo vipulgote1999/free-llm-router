@@ -354,6 +354,7 @@ document.querySelectorAll('.guides .cols').forEach(function(h){var n=getComputed
 
 /* dashboard logic — baseline-locked, same IDs as before */
 var $ = function(s){return document.querySelector(s)};
+var esc = function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');};
 var fmt = function(ts){return ts ? new Date(ts).toISOString().replace('T',' ').slice(0,19)+'Z' : '—'};
 var inSec = function(ts, now){return Math.max(0, Math.ceil((ts-now)/1000))};
 var fmtSec = function(s){ return s<60 ? s+'s' : (s/60|0)+'m '+(s%60)+'s';};
@@ -425,7 +426,7 @@ function renderProviders(rows, now){
           for (var k=0;k<entries.length;k++) {
             var m = entries[k][0], until = entries[k][1];
             var sec = Math.ceil((until - now2)/1000);
-            modelCdHtml += '<div>'+m.slice(0,22)+' · <span class="badge cool">'+fmtSec(sec)+' left</span></div>';
+            modelCdHtml += '<div>'+esc(m).slice(0,22)+' · <span class="badge cool">'+fmtSec(sec)+' left</span></div>';
           }
           if (Object.keys(b.modelCooldowns).length > 3) modelCdHtml += '<div class="muted">+'+(Object.keys(b.modelCooldowns).length-3)+' more</div>';
           modelCdHtml += '</div>';
@@ -438,7 +439,7 @@ function renderProviders(rows, now){
         + '<td>'+cell(b.minute.tokens, p.limits.tpm)+'</td>'
         + '<td>'+cell(b.day.requests, p.limits.rpd)+'<div class="muted mono" style="font-size:10px; line-height:16px">'+resetDayH+'h · '+fmt(b.dayResetsAt)+'</div></td>'
         + '<td class="mono" style="font-size:11px; line-height:16px"><div>'+fmtSec(resetMin)+' <span class="muted">'+fmt(b.minuteResetsAt)+'</span></div><div>'+resetDayH+'h <span class="muted">'+fmt(b.dayResetsAt)+'</span></div></td>'
-        + '<td>'+cdTxt + (b.lastError? '<div class="mono" style="font-size:10px; line-height:16px; color:var(--red); margin-top:4px">'+b.lastError+'</div>' : '') + modelCdHtml + '</td>'
+        + '<td>'+cdTxt + (b.lastError? '<div class="mono" style="font-size:10px; line-height:16px; color:var(--red); margin-top:4px">'+esc(b.lastError)+'</div>' : '') + modelCdHtml + '</td>'
         + '</tr>';}
   }
   tbody.innerHTML=html || '<tr><td colspan="7" class="muted">no buckets</td></tr>';
@@ -449,7 +450,7 @@ function renderLogs(logs){
   var rev=[].slice.call(logs).slice(-30).reverse();
   var html='<table style="font-size:11px"><thead><tr><th>time</th><th>provider</th><th>model</th><th>bucket</th><th>outcome</th><th>reason</th><th>ms</th></tr></thead><tbody>';
   for(var i=0;i<rev.length;i++){var l=rev[i]; var cls = l.outcome==='ok' ? 'log-ok' : l.outcome==='skipped' ? 'log-skip' : 'log-err'; var when = new Date(l.ts).toISOString().slice(11,19);
-    html+='<tr><td class="mono muted">'+when+'</td><td>'+l.provider+'</td><td class="mono" style="max-width:180px; overflow:hidden; text-overflow:ellipsis">'+l.model+'</td><td class="mono muted">'+l.bucket+'</td><td class="'+cls+'">'+l.outcome+'</td><td>'+(l.reason||'—')+(l.retryAfterSec? ' · '+l.retryAfterSec+'s':'')+'</td><td class="mono">'+(l.ms!=null?l.ms:'—')+'ms</td></tr>';}
+    html+='<tr><td class="mono muted">'+esc(when)+'</td><td>'+esc(l.provider)+'</td><td class="mono" style="max-width:180px; overflow:hidden; text-overflow:ellipsis">'+esc(l.model)+'</td><td class="mono muted">'+esc(l.bucket)+'</td><td class="'+cls+'">'+esc(l.outcome)+'</td><td>'+esc(l.reason||'—')||'—')+(l.retryAfterSec? ' · '+l.retryAfterSec+'s':'')+'</td><td class="mono">'+(l.ms!=null?l.ms:'—')+'ms</td></tr>';}
   html+='</tbody></table>'; el.innerHTML=html;
 }
 function renderChain(logs){
@@ -458,7 +459,7 @@ function renderChain(logs){
   var rev=[].slice.call(logs).reverse(); var lastTs = rev[0] ? rev[0].ts : 0; var burst=[]; for(var i=0;i<rev.length;i++){if(lastTs - rev[i].ts < 2500) burst.push(rev[i]);} burst.reverse();
   if(burst.length===0){el.innerHTML='<div class="muted">no recent burst</div>'; return;}
   var html='<div class="chain">';
-  for(var i=0;i<burst.length;i++){var l=burst[i]; var ok=l.outcome==='ok'; html+='<span class="step '+(ok?'ok':'fail')+'">'+l.provider+'<span class="muted"> / '+l.model.slice(0,22)+'</span> <span class="pill">'+l.reason+'</span>'+(l.ms!=null?' <span class="muted">'+l.ms+'ms</span>':'')+'</span>'; if(i<burst.length-1) html+='<span class="muted">→</span>';}
+  for(var i=0;i<burst.length;i++){var l=burst[i]; var ok=l.outcome==='ok'; html+='<span class="step '+(ok?'ok':'fail')+'">'+l.provider+'<span class="muted"> / '+esc(l.model).slice(0,22)+'</span> <span class="pill">'+l.reason+'</span>'+(l.ms!=null?' <span class="muted">'+l.ms+'ms</span>':'')+'</span>'; if(i<burst.length-1) html+='<span class="muted">→</span>';}
   html+='</div>'; var fails=0, okCount=0; for(var i=0;i<burst.length;i++){if(burst[i].outcome!=='ok') fails++; else okCount++;} html+='<div class="muted mono" style="font-size:11px; line-height:16px; margin-top:8px">'+burst.length+' hops · '+fails+' skipped/failed · '+okCount+' ok · last at '+fmt(burst[burst.length-1].ts)+'</div>';
   if(okCount===0) html+='<div style="margin-top:8px; color:var(--amber); font-size:11px; line-height:16px">All providers exhausted — client received <code>503 all providers exhausted</code> with <code>tried[]</code>. Add keys or increase limits.</div>';
   el.innerHTML=html;
