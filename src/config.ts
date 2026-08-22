@@ -97,6 +97,8 @@ const PROVIDERS: ProviderConfig[] = [
       }),
       m('qwen/qwen3.6-27b', ['qwen3.6'], ['text'], 131072),
       m('allam-2-7b', ['allam'], ['text'], 131072),
+      m('groq/compound', ['compound'], ['text'], 131072),
+      m('groq/compound-mini', ['compound-mini'], ['text'], 131072),
     ],
   },
   {
@@ -114,7 +116,6 @@ const PROVIDERS: ProviderConfig[] = [
     models: [
       m('gpt-oss-120b', ['gpt-oss'], ['text'], 131072),
       m('gemma-4-31b', ['gemma-4'], ['text'], 262144),
-      m('zai-glm-4.7', ['glm-4.7'], ['text'], 131072),
     ],
   },
   {
@@ -230,7 +231,7 @@ const PROVIDERS: ProviderConfig[] = [
         rpd: 100,
         tpm: 250000,
       }),
-      m('text-embedding-004', ['embedding-004', 'gemini-embed', 'text-embedding'], ['embeddings'], 8192),
+      m('gemini-embedding-001', ['gemini-embedding', 'gemini-embed', 'text-embedding'], ['embeddings'], 8192),
     ],
   },
   {
@@ -268,6 +269,7 @@ const PROVIDERS: ProviderConfig[] = [
       m('nvidia/nemotron-nano-12b-v2-vl:free', ['nemotron-vl'], ['vision'], 128000),
       m('nvidia/nemotron-nano-9b-v2:free', ['nemotron-nano-9b'], ['text'], 128000),
       m('openai/text-embedding-3-small:free', ['text-embedding-3-small', 'text-embedding'], ['embeddings'], 8191),
+      m('z-ai/glm-5.2:free', ['glm-5.2', 'glm-free'], ['text'], 131072),
     ],
   },
   {
@@ -381,7 +383,6 @@ const PROVIDERS: ProviderConfig[] = [
       m('deepseek-ai/deepseek-v4-flash-0731', ['deepseek-chat', 'deepseek-flash'], ['text'], 131072),
       m('google/gemma-4-31b-it', ['gemma-4'], ['text'], 262144),
       m('minimaxai/minimax-m3', ['minimax'], ['text'], 131072),
-      m('z-ai/glm-5.2', ['glm'], ['text'], 131072),
       m('meta/muse-glimmer-30b', ['muse'], ['text'], 131072),
       m('meta/llama-3.2-90b-vision-instruct', ['llama-vision-90b'], ['vision'], 131072),
       m('nvidia/nv-embedqa-e5-v5', ['nv-embedqa', 'nvidia-embed'], ['embeddings'], 8192),
