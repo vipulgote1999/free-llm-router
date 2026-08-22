@@ -318,8 +318,6 @@ export default {
       }
       if (path.startsWith('/v1/auth/keys/')) {
         const action = path.split('/').pop();
-        const hash = String((body as { hash?: string }).hash ?? '');
-        if (!hash) return jsonErr(400, '`hash` required', undefined, { code: 'missing_hash' });
         // client sends prefix (hash never leaves the vault)
         const prefix = String((body as { prefix?: string }).prefix ?? '');
         if (!prefix) return jsonErr(400, '`prefix` required', undefined, { code: 'missing_prefix' });
