@@ -244,9 +244,13 @@ export default {
       if (sizeErr) return { ok: false, response: sizeErr };
       try {
         const body = (await request.json()) as Record<string, unknown>;
-        // Defense: prototype pollution guard
-        if (body && typeof body === 'object' && ('__proto__' in body || 'constructor' in body)) {
-          return { ok: false, response: jsonErr(400, 'invalid JSON body', undefined, { code: 'invalid_json' }) };
+        // Defense: prototype pollution guard — check OWN keys only
+        // ('__proto__' in obj is always true via prototype chain; JSON.parse creates own '__proto__' key only for literal)
+        if (body && typeof body === 'object') {
+          const ownKeys = Object.getOwnPropertyNames(body);
+          if (ownKeys.includes('__proto__') || ownKeys.includes('constructor')) {
+            return { ok: false, response: jsonErr(400, 'invalid JSON body', undefined, { code: 'invalid_json' }) };
+          }
         }
         return { ok: true, body: body ?? {} };
       } catch {
