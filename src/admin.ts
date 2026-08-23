@@ -404,7 +404,9 @@ function toggleAuto(){var cb=$('#auto'); setAuto(!cb.checked); }
 if($('#auto')) $('#auto').addEventListener('change', function(e){setAuto(e.target.checked)});
 async function load(){
   try{
-    var res=await fetch('/admin/stats');
+    var res=await fetch('/admin/stats', {credentials: 'same-origin'});
+    if(res.status===401){ var tb=document.querySelector('#providers tbody'); if(tb) tb.innerHTML='<tr><td colspan=\"7\" class=\"muted\">not authenticated — <a href=\"/login\">login</a> to view stats (or send <code>Authorization: Bearer sk-fr-…</code>)</td></tr>'; var el=$('#chips'); if(el) el.innerHTML='<span class=\"badge cool\">401 unauthorized</span>'; return; }
+    if(!res.ok) throw new Error('stats '+res.status);
     var data=await res.json();
     var rows = Array.isArray(data) ? data : (data.providers ?? data);
     var logs = Array.isArray(data) ? [] : (data.logs ?? []);
@@ -552,7 +554,7 @@ function renderLogs(logs){
   var rev=[].slice.call(logs).slice(-30).reverse();
   var html='<table style="font-size:11px"><thead><tr><th>time</th><th>provider</th><th>model</th><th>bucket</th><th>outcome</th><th>reason</th><th>ms</th></tr></thead><tbody>';
   for(var i=0;i<rev.length;i++){var l=rev[i]; var cls = l.outcome==='ok' ? 'log-ok' : l.outcome==='skipped' ? 'log-skip' : 'log-err'; var when = new Date(l.ts).toISOString().slice(11,19);
-    html+='<tr><td class="mono muted">'+esc(when)+'</td><td>'+esc(l.provider)+'</td><td class="mono" style="max-width:180px; overflow:hidden; text-overflow:ellipsis">'+esc(l.model)+'</td><td class="mono muted">'+esc(l.bucket)+'</td><td class="'+cls+'">'+esc(l.outcome)+'</td><td>'+esc(l.reason||'—')||'—')+(l.retryAfterSec? ' · '+l.retryAfterSec+'s':'')+'</td><td class="mono">'+(l.ms!=null?l.ms:'—')+'ms</td></tr>';}
+    html+='<tr><td class="mono muted">'+esc(when)+'</td><td>'+esc(l.provider)+'</td><td class="mono" style="max-width:180px; overflow:hidden; text-overflow:ellipsis">'+esc(l.model)+'</td><td class="mono muted">'+esc(l.bucket)+'</td><td class="'+cls+'">'+esc(l.outcome)+'</td><td>'+esc(l.reason||'—')+(l.retryAfterSec? ' · '+l.retryAfterSec+'s':'')+'</td><td class="mono">'+(l.ms!=null?l.ms:'—')+'ms</td></tr>';}
   html+='</tbody></table>'; el.innerHTML=html;
 }
 function renderChain(logs){
