@@ -521,7 +521,7 @@ function renderCfg(rows, config){
     var p=rows[i]; var o=config[p.provider]||{};
     var dl='dl_'+p.provider;
     var opts=(p.modelIds||[]).map(function(m){var sc=p.scores&&p.scores[m],s=sc&&sc.score;return '<option value="'+esc(m)+'" label="'+(s!=null?'AA '+s+(sc.estimated?'*':''):'')+'">'}).join('');
-    function inp(id,val,ph,w){return '<input data-cfg="'+id+'" list="'+dl+'" value="'+esc(val||'')+'" placeholder="'+(ph||'')+'" style="width:'+(w||'100%')+'; padding:4px 6px; font-size:11px; font-family:\'Space Mono\',monospace; border:1px solid var(--line)">'}
+    function inp(id,val,ph,w){return '<input data-cfg="'+id+'" list="'+dl+'" value="'+esc(val||'')+'" placeholder="'+(ph||'')+'" style="width:'+(w||'100%')+'; padding:4px 6px; font-size:11px; font-family:\\'Space Mono\\',monospace; border:1px solid var(--line)">'}
     var limInp=function(f){var v=o.limits&&o.limits[f]!=null?o.limits[f]:''; return '<input data-lim="'+f+'" data-pid="'+p.provider+'" type="number" min="0" value="'+v+'" placeholder="∞" style="width:64px; padding:4px 6px; font-size:11px; border:1px solid var(--line)">'}
     html+='<tr>'
       + '<td><b>'+esc(p.name)+'</b> <span class="muted mono">'+esc(p.provider)+'</span>'+(p.disabled&&p.disabledReason?'<div class="mono" style="font-size:10px;color:var(--red)">'+esc(p.disabledReason)+'</div>':'')+'</td>'
