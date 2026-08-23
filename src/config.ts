@@ -122,12 +122,15 @@ const PROVIDERS: ProviderConfig[] = [
     // Catalog verified live 2026-08: keyless zen only serves the *-free
     // tier — everything else returns 401 Missing API key. Only free models
     // are registered so the router never wastes hops on key-required ones.
+    // Go key reuse: when OPENCODE_API_KEY is set, zen also sends it as
+    // Bearer (same gateway, separate quota) so free models avoid the
+    // IP-based 100/day limit.
     id: 'zen',
-    name: 'OpenCode Zen (keyless)',
+    name: 'OpenCode Zen (keyless + Go key when set)',
     baseUrl: 'https://opencode.ai/zen/v1',
     auth: 'none',
-    apiKeyEnv: '',
-    keyHeader: null,
+    apiKeyEnv: 'OPENCODE_API_KEY',
+    keyHeader: 'x-opencode-api-key',
     // ~100 requests/day per IP on the free tier
     limits: { rpm: 10, rpd: 100, tpm: MAX, tpd: MAX },
     dayAnchorUtc: 0,
