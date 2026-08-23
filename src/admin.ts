@@ -8,6 +8,7 @@
 
 import type { BucketState, ProviderConfig } from './types';
 import { DAY_MS, MINUTE_MS } from './windows';
+import { AA_SCORES } from './model-scores';
 
 interface AdminEnv {
   LIMITER: DurableObjectNamespace;
@@ -32,6 +33,7 @@ export interface ProviderStats {
   disabled?: boolean;
   disabledReason?: string;
   buckets: Record<string, BucketStats>;
+  scores: Record<string, { score: number | null; aaSlug: string; rank?: string; estimated?: boolean } | null>;
 }
 
 async function doCall<T>(stub: DurableObjectStub, payload: unknown): Promise<T> {
@@ -77,6 +79,9 @@ export async function collectStats(
         disabled: p.disabled,
         disabledReason: p.disabledReason,
         buckets,
+        scores: Object.fromEntries(
+          p.models.map((mm) => [mm.id, (AA_SCORES as Record<string, { score: number | null; aaSlug: string; rank?: string; estimated?: boolean }>)[mm.id] ?? null]),
+        ),
       };
     }),
   );
@@ -498,7 +503,7 @@ function renderProviders(rows, now){
         }
       }
       html += '<tr class="provider-row '+rowCls+'">'
-        + '<td><b>'+esc(p.name)+'</b> <span class="muted mono">'+esc(p.provider)+'</span> <span class="pill mono">'+esc(id)+'</span><div class="muted mono" style="font-size:10px; line-height:16px">w '+p.weight+' · '+p.models+' models</div></td>'
+        + '<td><b>'+esc(p.name)+'</b> <span class="muted mono">'+esc(p.provider)+'</span> <span class="pill mono">'+esc(id)+'</span><div class="muted mono" style="font-size:10px; line-height:16px">w '+p.weight+' · '+p.models+' models'+(function(){var best=null,rn="";for(var k in (p.scores||{})){var s=p.scores[k];if(s&&s.score!=null&&(best==null||s.score>best)){best=s.score;rn=s.rank||""}}return best!=null?' · AA '+best+(rn?" "+rn:""):''})()+'</div></td>'
         + '<td>'+esc(id)+'</td>'
         + '<td>'+cell(b.minute.requests, p.limits.rpm)+'<div class="muted mono" style="font-size:10px; line-height:16px">reset '+fmtSec(resetMin)+'</div></td>'
         + '<td>'+cell(b.minute.tokens, p.limits.tpm)+'</td>'
@@ -515,7 +520,7 @@ function renderCfg(rows, config){
   for(var i=0;i<rows.length;i++){
     var p=rows[i]; var o=config[p.provider]||{};
     var dl='dl_'+p.provider;
-    var opts=(p.modelIds||[]).map(function(m){return '<option value="'+esc(m)+'">'}).join('');
+    var opts=(p.modelIds||[]).map(function(m){var sc=p.scores&&p.scores[m],s=sc&&sc.score;return '<option value="'+esc(m)+'" label="'+(s!=null?'AA '+s+(sc.estimated?'*':''):'')+'">'}).join('');
     function inp(id,val,ph,w){return '<input data-cfg="'+id+'" list="'+dl+'" value="'+esc(val||'')+'" placeholder="'+(ph||'')+'" style="width:'+(w||'100%')+'; padding:4px 6px; font-size:11px; font-family:\'Space Mono\',monospace; border:1px solid var(--line)">'}
     var limInp=function(f){var v=o.limits&&o.limits[f]!=null?o.limits[f]:''; return '<input data-lim="'+f+'" data-pid="'+p.provider+'" type="number" min="0" value="'+v+'" placeholder="∞" style="width:64px; padding:4px 6px; font-size:11px; border:1px solid var(--line)">'}
     html+='<tr>'
