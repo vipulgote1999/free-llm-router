@@ -15,6 +15,7 @@ import {
   getModelLimits,
   getProviders,
 } from './config';
+import { getEffectiveProviders } from './runtime';
 import { jsonErr } from './http';
 import type { AcquireResult, ChatRequest, GenericRequest } from './types';
 import type { ProviderConfig } from './types';
@@ -285,7 +286,7 @@ async function routeWithEndpoint(
   body: Record<string, unknown>,
   endpoint: string,
 ): Promise<Response> {
-  const providers = getProviders(env as Record<string, unknown>);
+  const providers = await getEffectiveProviders(env as Record<string, unknown>);
   const modelStr = (body.model as string | undefined) ?? 'auto';
   const fallbacks = parseFallbackModels(body as GenericRequest);
 
@@ -594,7 +595,7 @@ export async function routeRaw(
   bodyBytes: ArrayBuffer | null,
   contentType: string | null,
 ): Promise<Response> {
-  const providers = getProviders(env as Record<string, unknown>);
+  const providers = await getEffectiveProviders(env as Record<string, unknown>);
   // Model may be in multipart or query param; try to extract for routing.
   // For multipart we can't easily parse without deps, so use 'auto' plus endpoint.
   let modelStr = 'auto';
@@ -663,7 +664,7 @@ export async function routeRaw(
           if (cand.provider.auth === 'x-goog-api-key') headers['x-goog-api-key'] = bucket.key;
           else headers['authorization'] = `Bearer ${bucket.key}`;
         }
-        const timeoutMs = Number(env.UPSTREAM_TIMEOUT_MS) || 15000;
+        const timeoutMs = Number(env.UPSTREAM_TIMEOUT_MS) || 300000;
         const res = await fetch(`${cand.provider.baseUrl}${endpoint}`, {
           method: request.method,
           headers,

@@ -627,6 +627,101 @@ export function getProviders(env: Record<string, unknown>): ProviderConfig[] {
   return PROVIDERS.map((p) => resolveProvider(p, env));
 }
 
+// ------------------------------------------------------------- runtime overrides
+
+/**
+ * Admin-editable per-provider overrides. Persisted in VaultDO storage so they
+ * survive sessions and redeploys; merged on top of the static registry at
+ * request time. `auto.*` swaps which model serves text/vision/audio routing;
+ * `limits` clamps the free-tier windows (same semantics as <PROVIDER>_RPM env).
+ */
+export interface RuntimeOverrides {
+  enabled?: boolean;
+  weight?: number;
+  autoText?: string;
+  autoVision?: string;
+  autoAudio?: string;
+  limits?: Partial<Limits>;
+}
+
+export type RuntimeConfig = Record<string, RuntimeOverrides>;
+
+function num(v: unknown): number | undefined {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+/** Validate one provider's override payload — unknown fields are dropped. */
+export function sanitizeRuntimeOverride(raw: unknown): RuntimeOverrides {
+  const src = (raw ?? {}) as Record<string, unknown>;
+  const out: RuntimeOverrides = {};
+  if (typeof src.enabled === 'boolean') out.enabled = src.enabled;
+  const weight = num(src.weight);
+  if (weight !== undefined) out.weight = weight;
+  for (const [key, field] of [
+    ['autoText', 'autoText'],
+    ['autoVision', 'autoVision'],
+    ['autoAudio', 'autoAudio'],
+  ] as const) {
+    if (typeof src[key] === 'string' && (src[key] as string).length <= 200) {
+      out[field] = src[key] as string;
+    }
+  }
+  if (src.limits && typeof src.limits === 'object') {
+    const lim: Partial<Limits> = {};
+    for (const f of ['rpm', 'rpd', 'tpm', 'tpd'] as const) {
+      const v = num((src.limits as Record<string, unknown>)[f]);
+      if (v !== undefined) lim[f] = v;
+    }
+    if (Object.keys(lim).length > 0) out.limits = lim;
+  }
+  return out;
+}
+
+/**
+ * Merge runtime overrides onto resolved providers. Unknown provider ids and
+ * empty overrides pass through untouched. Pure — unit-tested directly.
+ */
+export function applyRuntimeOverrides(
+  providers: ProviderConfig[],
+  overrides: RuntimeConfig | undefined,
+): ProviderConfig[] {
+  if (!overrides || typeof overrides !== 'object') return providers;
+  return providers.map((p) => {
+    const o = sanitizeRuntimeOverride(overrides[p.id]);
+    if (Object.keys(o).length === 0) return p;
+    const wasDisabled = p.disabled;
+    const next: ProviderConfig = { ...p };
+    if (o.enabled === false) {
+      next.disabled = true;
+      next.disabledReason = next.disabledReason ?? 'disabled via admin config';
+    } else if (o.enabled === true) {
+      // admin explicitly re-enabled — clear a config-disable but keep
+      // infrastructural disables (missing keys / missing base URL)
+      if (next.disabledReason?.includes('admin config')) {
+        next.disabled = false;
+        next.disabledReason = undefined;
+      }
+    }
+    if (o.weight !== undefined && !wasDisabled) next.weight = o.weight;
+    const auto = { ...p.auto };
+    if (o.autoText) auto.text = o.autoText;
+    if (o.autoVision) auto.vision = o.autoVision;
+    if (o.autoAudio) auto.audio = o.autoAudio;
+    next.auto = auto;
+    if (o.limits) {
+      next.limits = { ...p.limits, ...o.limits };
+      next.envLimits = { ...(p.envLimits ?? {}), ...o.limits };
+      next.models = p.models.map((mm) =>
+        o.limits && Object.keys(o.limits).length > 0
+          ? { ...mm, limits: { ...mm.limits, ...o.limits } }
+          : mm,
+      );
+    }
+    return next;
+  });
+}
+
 export function providerById(
   providers: ProviderConfig[],
   id: string,

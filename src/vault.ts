@@ -42,6 +42,8 @@ type VaultOp =
   | { op: 'checkKey'; key: string }
   | { op: 'touchKey'; hash: string }
   | { op: 'changePassword'; oldPassword: string; newPassword: string }
+  | { op: 'getConfig' }
+  | { op: 'setConfig'; config: unknown }
   | { op: 'stats' };
 
 function respond(data: unknown, status = 200): Response {
@@ -58,6 +60,7 @@ export class VaultDO extends DurableObject {
   private sessions = new Map<string, SessionRecord>(); // token hash -> record
   private loginState: LoginAttemptState = { fails: 0, lockedUntil: 0 };
   private dirty = true;
+  private runtimeConfig: Record<string, unknown> = {};
 
   constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
     super(ctx, env);
@@ -69,6 +72,8 @@ export class VaultDO extends DurableObject {
       if (s) this.sessions = new Map(Object.entries(s));
       const l = await ctx.storage.get<LoginAttemptState>('loginState');
       if (l) this.loginState = l;
+      const rc = await ctx.storage.get<Record<string, unknown>>('runtimeConfig');
+      if (rc) this.runtimeConfig = rc;
     });
   }
 
@@ -108,6 +113,10 @@ export class VaultDO extends DurableObject {
         return respond(await this.touchKey(op.hash));
       case 'changePassword':
         return respond(await this.changePassword(op.oldPassword, op.newPassword));
+      case 'getConfig':
+        return respond({ config: this.runtimeConfig });
+      case 'setConfig':
+        return respond(await this.setConfig(op.config));
       case 'stats':
         return respond({
           hasMaster: !!this.masterHash,
@@ -273,6 +282,15 @@ export class VaultDO extends DurableObject {
     // invalidate all sessions on password change
     this.sessions.clear();
     await this.persist();
+    return { ok: true };
+  }
+
+  private async setConfig(config: unknown): Promise<{ ok: boolean }> {
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      return { ok: false };
+    }
+    this.runtimeConfig = config as Record<string, unknown>;
+    await this.ctx.storage.put('runtimeConfig', this.runtimeConfig);
     return { ok: true };
   }
 }

@@ -8,9 +8,10 @@
 
 import { ProviderLimiter } from './limiter';
 import { VaultDO, sha256Hex, hashPassword, isValidApiKeyShape, KEY_PREFIX } from './vault';
-import { getProviders } from './config';
+import { PROVIDER_IDS, getProviders, sanitizeRuntimeOverride } from './config';
 import { routeChat, routeCompletion, routeEmbedding, routeRaw, getRecentLogs } from './router';
 import { DASHBOARD_HTML, LOGIN_HTML, KEYS_HTML, collectStats, resetAll } from './admin';
+import { loadRuntimeConfig, getEffectiveProviders } from './runtime';
 import { corsHeaders, html, json, jsonErr, checkBodySize } from './http';
 import type { ChatRequest } from './types';
 
@@ -98,8 +99,8 @@ function isAdminPath(path: string): boolean {
   return path === '/admin' || path === '/admin/' || path.startsWith('/admin/');
 }
 
-function modelsList(env: Env) {
-  const providers = getProviders(env);
+async function modelsList(env: Env) {
+  const providers = await getEffectiveProviders(env);
   const out: unknown[] = [];
   for (const p of providers) {
     if (p.disabled) continue;
@@ -118,10 +119,10 @@ function modelsList(env: Env) {
   return { object: 'list', data: out };
 }
 
-function modelRetrieve(env: Env, id: string): unknown | null {
+async function modelRetrieve(env: Env, id: string): Promise<unknown | null> {
   // validate id length and characters (defense: path traversal / injection)
   if (id.length > 200 || /[\x00-\x1f\x7f]/.test(id)) return null;
-  const providers = getProviders(env);
+  const providers = await getEffectiveProviders(env);
   for (const p of providers) {
     if (p.disabled) continue;
     const m = p.models.find((mm) => mm.id === id || mm.aliases.includes(id));
@@ -199,7 +200,7 @@ export default {
 
     // ---- public (no auth) ----
     if (path === '/health') {
-      const providers = getProviders(env);
+      const providers = await getEffectiveProviders(env);
       return json(
         {
           ok: true,
@@ -359,23 +360,24 @@ export default {
 
     // ---- models ----
     if ((path === '/v1/models' || path === '/models') && request.method === 'GET') {
-      return json(modelsList(env), { headers: secCors });
+      return json(await modelsList(env), { headers: secCors });
     }
     if ((path.startsWith('/v1/models/') || path.startsWith('/models/')) && request.method === 'GET') {
       const id = decodeURIComponent(path.replace(/^\/(v1\/)?models\//, ''));
       if (!id) return jsonErr(400, 'model id required', undefined, { code: 'invalid_request' });
       if (id.length > 200) return jsonErr(400, 'model id too long', undefined, { code: 'invalid_request' });
-      const found = modelRetrieve(env, id);
+      const found = await modelRetrieve(env, id);
       if (!found) {
         const slash = id.indexOf('/');
         if (slash > 0) {
           const bare = id.slice(slash + 1);
           if (bare.length <= 200) {
-            const foundBare = modelRetrieve(env, bare);
+            const foundBare = await modelRetrieve(env, bare);
             if (foundBare) return json(foundBare as Record<string, unknown>, { headers: secCors });
           }
         }
-        return jsonErr(404, `model '${id.slice(0,100)}' not found`, { configured: getProviders(env).map((p) => p.id) }, { code: 'model_not_found' });
+        const configured = (await getEffectiveProviders(env)).map((p) => p.id);
+        return jsonErr(404, `model '${id.slice(0,100)}' not found`, { configured }, { code: 'model_not_found' });
       }
       return json(found as Record<string, unknown>, { headers: secCors });
     }
@@ -385,7 +387,7 @@ export default {
       return html(DASHBOARD_HTML, true);
     }
     if (path === '/admin/stats' && request.method === 'GET') {
-      const providers = getProviders(env);
+      const providers = await getEffectiveProviders(env);
       const stats = await collectStats(env, providers);
       const logs = getRecentLogs();
       const now = Date.now();
@@ -394,7 +396,37 @@ export default {
       const p95 = okLatencies.length ? okLatencies[Math.floor(okLatencies.length * 0.95)] : null;
       const success = logs.filter((l) => l.outcome === 'ok').length;
       const failure = logs.filter((l) => l.outcome === 'error' || l.outcome === 'skipped').length;
-      return json({ providers: stats, logs, summary: { p50, p95, success, failure, total: logs.length, now }, generatedAt: now }, { headers: secCors, isAdmin: true });
+      const config = await loadRuntimeConfig(env);
+      return json({ providers: stats, logs, config: config ?? {}, summary: { p50, p95, success, failure, total: logs.length, now }, generatedAt: now }, { headers: secCors, isAdmin: true });
+    }
+    if (path === '/admin/config' && request.method === 'GET') {
+      return json({ config: (await loadRuntimeConfig(env)) ?? {} }, { headers: secCors, isAdmin: true });
+    }
+    if (path === '/admin/config' && request.method === 'POST') {
+      const sizeErr = checkBodySize(request, false);
+      if (sizeErr) return sizeErr;
+      let body: { config?: unknown };
+      try {
+        body = (await request.json()) as { config?: unknown };
+      } catch {
+        return jsonErr(400, 'invalid JSON', undefined, { code: 'invalid_json' });
+      }
+      if (!body.config || typeof body.config !== 'object' || Array.isArray(body.config)) {
+        return jsonErr(400, '`config` object required (providerId → overrides)', undefined, { code: 'invalid_config' });
+      }
+      // drop unknown provider ids; sanitize each override payload
+      const clean: Record<string, unknown> = {};
+      for (const [pid, raw] of Object.entries(body.config as Record<string, unknown>)) {
+        if (!PROVIDER_IDS.has(pid)) continue;
+        clean[pid] = sanitizeRuntimeOverride(raw);
+      }
+      const stub = env.VAULT.get(env.VAULT.idFromName('vault:global'));
+      const res = await stub.fetch('https://vault/op', {
+        method: 'POST',
+        body: JSON.stringify({ op: 'setConfig', config: clean }),
+      });
+      if (!res.ok) return jsonErr(502, 'vault rejected config save', undefined, { code: 'vault_error' });
+      return json({ ok: true, config: clean }, { headers: secCors, isAdmin: true });
     }
     if (path === '/admin/reset' && request.method === 'POST') {
       await resetAll(env, getProviders(env));

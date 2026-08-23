@@ -25,6 +25,9 @@ export interface ProviderStats {
   weight: number;
   dayAnchorUtc: number;
   models: number;
+  modelIds: string[];
+  capabilities: Record<string, string[]>;
+  auto: { text: string; vision: string; audio: string };
   limits: ProviderConfig['limits'];
   disabled?: boolean;
   disabledReason?: string;
@@ -65,6 +68,11 @@ export async function collectStats(
         weight: p.weight,
         dayAnchorUtc: p.dayAnchorUtc,
         models: p.models.length,
+        modelIds: p.models.map((mm) => mm.id),
+        capabilities: Object.fromEntries(
+          p.models.map((mm) => [mm.id, mm.capabilities]),
+        ),
+        auto: p.auto,
         limits: p.limits,
         disabled: p.disabled,
         disabledReason: p.disabledReason,
@@ -293,6 +301,34 @@ td{font-size:12.5px}
 </div>
 </section>
 
+<!-- SPREAD 2b — routing & limits editor -->
+<section class="spread" id="routing">
+<div class="wrap">
+<div class="grid">
+
+  <div class="band shead">
+    <div style="grid-column:1 / 9">
+      <h2>Routing &amp; limits — admin overrides</h2>
+      <p>Persisted in the vault (survives redeploys). Auto-model = what <code>auto</code> and content-detection pick. Blank limit = keep registry default. Disable a provider that keeps erroring; re-enable anytime.</p>
+    </div>
+    <div style="grid-column:9 / 13; text-align:right; display:flex; gap:8px; justify-content:flex-end; align-items:start">
+      <button class="btn ghost" onclick="load()">Discard</button>
+      <button class="btn accent" id="saveCfg">Save config</button>
+    </div>
+  </div>
+
+  <div class="band">
+    <div style="grid-column:1 / 13" class="table-wrap">
+      <table id="cfgTable"><thead><tr><th>provider</th><th>enabled</th><th>weight</th><th>auto text</th><th>auto vision</th><th>auto audio</th><th>RPM · RPD · TPM · TPD <span class="muted">(blank = default)</span></th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+  <div class="band"><div style="grid-column:1 / 13" class="muted mono" id="cfgMsg"></div></div>
+
+</div>
+<div class="guides" aria-hidden="true"><div class="cols"></div><div class="rows"></div><div class="mline l"></div><div class="mline r"></div></div>
+</div>
+</section>
+
 <!-- SPREAD 3 — logs + fallback chain -->
 <section class="spread">
 <div class="wrap">
@@ -357,7 +393,8 @@ var $ = function(s){return document.querySelector(s)};
 var esc = function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');};
 var fmt = function(ts){return ts ? new Date(ts).toISOString().replace('T',' ').slice(0,19)+'Z' : '—'};
 var inSec = function(ts, now){return Math.max(0, Math.ceil((ts-now)/1000))};
-var fmtSec = function(s){ return s<60 ? s+'s' : (s/60|0)+'m '+(s%60)+'s';};
+var fmtSec = function(s){ if(s<60)return s+'s'; if(s<3600)return (s/60|0)+'m '+(s%60)+'s'; if(s<86400)return (s/3600|0)+'h '+((s%3600)/60|0)+'m'; return (s/86400|0)+'d '+((s%86400)/3600|0)+'h';};
+var fmtClock = function(ts){ var d=new Date(ts); return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});};
 var pct = function(used, limit){ return limit>1e15 ? 0 : Math.min(100, Math.round((used/limit)*100));};
 function bar(used, limit){var p=pct(used,limit);var cls=p>=100?'full':p>=80?'hot':'';return '<div class="bar '+cls+'"><i style="width:'+p+'%"></i></div><span class="muted mono" style="font-size:10px">'+p+'%</span>';}
 function cell(used, limit){var isInf=limit>1e15; return '<span class="mono">'+used+' / '+(isInf?'∞':limit)+'</span>'+bar(used,limit);}
@@ -376,6 +413,7 @@ async function load(){
     renderChips(rows, summary, now);
     renderSummary(rows, summary, logs, now);
     renderProviders(rows, now);
+    renderCfg(rows, data.config || {});
     renderLogs(logs);
     renderChain(logs);
     var gen=$('#generated'); if(gen) gen.textContent='updated '+fmt(now)+' · auto '+( $('#auto')&&$('#auto').checked ? 'on' : 'off');
@@ -391,7 +429,11 @@ function renderChips(rows, summary, now){
   var succ = summary ? summary.success : 0, fail = summary ? summary.failure : 0;
   var html='';
   html += '<span class="pill"><b>'+total+'</b> providers · <b style="color:var(--green)">'+enabled+' enabled</b> · '+disabled+' disabled</span>';
-  if(cooling) html += '<span class="badge cool"><b>'+cooling+'</b> cooling</span>'; else html += '<span class="badge ok">no cooldowns</span>';
+  if(cooling){
+    var nextUntil=Infinity, nextName='';
+    for(var i=0;i<rows.length;i++){var bs=rows[i].buckets||{}; for(var k in bs){ var b=bs[k]; var u=b.cooldownUntil||0; if(u>now && u<nextUntil){nextUntil=u; nextName=rows[i].provider+'/'+k;} for(var mk in (b.modelCooldowns||{})){var mu=b.modelCooldowns[mk]; if(mu>now && mu<nextUntil){nextUntil=mu; nextName=rows[i].provider+' · '+mk.slice(0,24);}}}}
+    html += '<span class="badge cool"><b>'+cooling+'</b> rate-limited · back at <b>'+fmtClock(nextUntil)+'</b> ('+fmtSec(inSec(nextUntil, now))+') · '+esc(nextName)+'</span>';
+  } else html += '<span class="badge ok">no cooldowns</span>';
   if(p50!=null) html += '<span class="pill">p50 <b>'+p50+'ms</b> · p95 <b>'+p95+'ms</b></span>';
   if(summary) html += '<span class="pill">ok <b style="color:var(--green)">'+succ+'</b> · fail <b style="color:var(--red)">'+fail+'</b></span>';
   html += '<span class="pill mono">openai: /v1/chat/completions · /v1/embeddings · /v1/models</span>';
@@ -403,11 +445,32 @@ function renderSummary(rows, summary, logs, now){
   var coolingBuckets = rows.reduce(function(a,r){return a + Object.values(r.buckets||{}).filter(function(b){return (b.cooldownUntil||0)>now}).length},0);
   var ok = summary ? summary.success : 0, fail = summary ? summary.failure : 0, p50=summary?summary.p50:null, p95=summary?summary.p95:null;
   var dayTokens=0, minuteReq=0; for(var i=0;i<rows.length;i++){var r=rows[i]; for(var k in r.buckets||{}){var b=r.buckets[k]; dayTokens+= (b.day && b.day.tokens)||0; minuteReq+= (b.minute && b.minute.requests)||0;}}
+  // recovery schedule — every blocked thing (bucket cooldown / model cooldown / daily quota), soonest first
+  var upcoming=[];
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i], bs=r.buckets||{};
+    for(var k in bs){ var b=bs[k];
+      if((b.cooldownUntil||0)>now) upcoming.push({p:r.provider,b:k,what:'cooldown',until:b.cooldownUntil});
+      var rpd=(r.limits&&r.limits.rpd)||0;
+      if(rpd<1e15 && b.day && b.day.requests>=rpd) upcoming.push({p:r.provider,b:k,what:'daily quota',until:b.dayResetsAt});
+      var mcs=b.modelCooldowns||{};
+      for(var mk in mcs){ if(mcs[mk]>now) upcoming.push({p:r.provider,b:k,what:'model '+mk.slice(0,26),until:mcs[mk]}); }
+    }
+    if(!Object.keys(bs).length && !r.disabled) upcoming.push({p:r.provider,b:'—',what:'no keys configured',until:now});
+  }
+  upcoming.sort(function(a,c){return a.until-c.until});
+  var recovHtml='';
+  for(var i=0;i<Math.min(upcoming.length,6);i++){var u=upcoming[i];
+    var when = u.what==='no keys configured' ? '<span style="color:var(--red)">needs key</span>' : 'back <b>'+fmtClock(u.until)+'</b> · '+fmtSec(inSec(u.until, now));
+    recovHtml += '<div class="mono" style="font-size:11px; line-height:20px; display:flex; justify-content:space-between; gap:8px"><span>'+esc(u.p)+' <span class="muted">'+esc(u.b)+'</span> · '+esc(u.what)+'</span><span>'+(u.what==='no keys configured'?'':when)+'</span></div>';
+  }
+  if(!recovHtml) recovHtml='<div class="muted mono" style="font-size:11px">nothing rate-limited — all providers serving</div>';
   var el=$('#summary'); if(!el) return;
   el.innerHTML=''
     + '<div style="grid-column:1 / 5" class="card"><h3>Throughput</h3><div class="numeral">'+minuteReq+'<span class="unit"> req / min</span></div><div class="muted mono" style="font-size:11px; line-height:16px">'+dayTokens.toLocaleString()+' tokens today · '+totalBuckets+' buckets · '+totalModels+' models</div><div style="display:flex; gap:2px; align-items:end; height:24px; margin-top:8px">'+Array.from({length:12},function(){return '<i style="width:4px; background:var(--accent); height:'+(6+Math.random()*18|0)+'px; display:block"></i>'}).join('')+'</div></div>'
     + '<div style="grid-column:5 / 9" class="card"><h3>Latency — recent ok</h3><div class="numeral">'+(p50!=null ? p50+'<span class="unit">ms p50</span> · '+p95+'<span class="unit">ms p95</span>' : '— <span class="unit">no traffic yet</span>')+'</div><div class="muted mono" style="font-size:11px; line-height:16px">'+(ok+fail)+' attempts · <span style="color:var(--green)">'+ok+' ok</span> · <span style="color:var(--red)">'+fail+' fail/skip</span></div><div class="muted" style="font-size:11px; line-height:16px; margin-top:4px">per-attempt ms in logs; p50/p95 from last 80 successes</div></div>'
-    + '<div style="grid-column:9 / 13" class="card"><h3>Failover health</h3><div class="numeral" style="color:'+(coolingBuckets?'var(--amber)':'var(--green)')+'">'+coolingBuckets+'<span class="unit"> buckets cooling</span></div><div class="muted mono" style="font-size:11px; line-height:16px">'+rows.length+' providers · fallbacks: <code>fallbacks</code> + context-window fallback + 429/5xx chain</div><div style="margin-top:8px"><span class="badge '+(coolingBuckets?'cool':'ok')+'">'+(coolingBuckets?'degraded — failover active':'healthy')+'</span></div></div>';
+    + '<div style="grid-column:9 / 13" class="card"><h3>Failover health</h3><div class="numeral" style="color:'+(coolingBuckets?'var(--amber)':'var(--green)')+'">'+coolingBuckets+'<span class="unit"> buckets cooling</span></div><div class="muted mono" style="font-size:11px; line-height:16px">'+rows.length+' providers · fallbacks: <code>fallbacks</code> + context-window fallback + 429/5xx chain</div><div style="margin-top:8px"><span class="badge '+(coolingBuckets?'cool':'ok')+'">'+(coolingBuckets?'degraded — failover active':'healthy')+'</span></div></div>'
+    + '<div style="grid-column:1 / 13" class="card"><h3>Recovery schedule — when rate-limited providers start working again</h3>'+recovHtml+'</div>';
 }
 function renderProviders(rows, now){
   var tbody=document.querySelector('#providers tbody'); if(!tbody) return;
@@ -444,6 +507,45 @@ function renderProviders(rows, now){
   }
   tbody.innerHTML=html || '<tr><td colspan="7" class="muted">no buckets</td></tr>';
 }
+function renderCfg(rows, config){
+  var tbody=document.querySelector('#cfgTable tbody'); if(!tbody) return;
+  var html='';
+  for(var i=0;i<rows.length;i++){
+    var p=rows[i]; var o=config[p.provider]||{};
+    var dl='dl_'+p.provider;
+    var opts=(p.modelIds||[]).map(function(m){return '<option value="'+esc(m)+'">'}).join('');
+    function inp(id,val,ph,w){return '<input data-cfg="'+id+'" list="'+dl+'" value="'+esc(val||'')+'" placeholder="'+(ph||'')+'" style="width:'+(w||'100%')+'; padding:4px 6px; font-size:11px; font-family:\'Space Mono\',monospace; border:1px solid var(--line)">'}
+    var limInp=function(f){var v=o.limits&&o.limits[f]!=null?o.limits[f]:''; return '<input data-lim="'+f+'" data-pid="'+p.provider+'" type="number" min="0" value="'+v+'" placeholder="∞" style="width:64px; padding:4px 6px; font-size:11px; border:1px solid var(--line)">'}
+    html+='<tr>'
+      + '<td><b>'+esc(p.name)+'</b> <span class="muted mono">'+esc(p.provider)+'</span>'+(p.disabled&&p.disabledReason?'<div class="mono" style="font-size:10px;color:var(--red)">'+esc(p.disabledReason)+'</div>':'')+'</td>'
+      + '<td><input type="checkbox" data-en="'+p.provider+'" '+(o.enabled===false?'':'checked')+(o.enabled===true?' title="re-enabled via config"':'')+'></td>'
+      + '<td>'+inp('w:'+p.provider, o.weight!=null?o.weight:p.weight, String(p.weight), '56px')+'</td>'
+      + '<td><datalist id="'+dl+'">'+opts+'</datalist>'+inp('t:'+p.provider, o.autoText||p.auto.text, p.auto.text)+'</td>'
+      + '<td>'+inp('v:'+p.provider, o.autoVision||p.auto.vision, p.auto.vision)+'</td>'
+      + '<td>'+inp('a:'+p.provider, o.autoAudio||p.auto.audio, p.auto.audio)+'</td>'
+      + '<td style="white-space:nowrap">'+limInp('rpm')+' '+limInp('rpd')+' '+limInp('tpm')+' '+limInp('tpd')+'</td>'
+      + '</tr>';
+  }
+  tbody.innerHTML=html || '<tr><td colspan="7" class="muted">no providers</td></tr>';
+}
+async function saveCfg(){
+  var msg=$('#cfgMsg'); var cfg={};
+  document.querySelectorAll('#cfgTable [data-pid],[data-en],[data-cfg]').forEach(function(el){
+    var pid = el.dataset.pid || el.dataset.en || (el.dataset.cfg||'').split(':')[1];
+    if(!pid) return;
+    cfg[pid]=cfg[pid]||{};
+    if(el.dataset.pid){ if(el.value!=='') { cfg[pid].limits=cfg[pid].limits||{}; cfg[pid].limits[el.dataset.lim]=Number(el.value); } }
+    else if(el.dataset.en){ cfg[pid].enabled=el.checked; }
+    else { var k=el.dataset.cfg.split(':')[0]; var map={t:'autoText',v:'autoVision',a:'autoAudio',w:'weight'}; var v=el.value.trim(); if(v!==''){ cfg[pid][map[k]] = k==='w' ? Number(v) : v; } }
+  });
+  try{
+    var res=await fetch('/admin/config',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({config:cfg})});
+    var data=await res.json();
+    if(msg) msg.textContent = res.ok ? ('saved at '+new Date().toLocaleTimeString()+' · '+Object.keys(cfg).length+' providers · active after next request') : ('save failed: '+JSON.stringify(data));
+    if(res.ok) load(); else if(msg) msg.style.color='var(--red)';
+  }catch(e){ if(msg){ msg.textContent='save failed: '+e; msg.style.color='var(--red)'; } }
+}
+if($('#saveCfg')) $('#saveCfg').addEventListener('click', saveCfg);
 function renderLogs(logs){
   var el=$('#logs'); var count=$('#logCount'); if(count) count.textContent='('+logs.length+' recent)'; if(!el) return;
   if(!logs || logs.length===0){el.innerHTML='<div class="muted">no attempts yet — send a request to <code>/v1/chat/completions</code></div>'; return;}
