@@ -351,6 +351,30 @@ export default {
       return html(KEYS_HTML, true);
     }
 
+    // ---- admin GET (public for dashboard viewing; POST stays protected) ----
+    if (path === '/admin' || path === '/admin/') {
+      return html(DASHBOARD_HTML, true);
+    }
+    if (path === '/admin/stats' && request.method === 'GET') {
+      const providers = await getEffectiveProviders(env);
+      const stats = await collectStats(env, providers);
+      const logs = getRecentLogs();
+      const now = Date.now();
+      const okLatencies = logs.filter((l) => l.outcome === 'ok' && typeof l.ms === 'number').map((l) => l.ms!) .sort((a, b) => a - b);
+      const p50 = okLatencies.length ? okLatencies[Math.floor(okLatencies.length * 0.5)] : null;
+      const p95 = okLatencies.length ? okLatencies[Math.floor(okLatencies.length * 0.95)] : null;
+      const success = logs.filter((l) => l.outcome === 'ok').length;
+      const failure = logs.filter((l) => l.outcome === 'error' || l.outcome === 'skipped').length;
+      const config = await loadRuntimeConfig(env);
+      return json({ providers: stats, logs, config: config ?? {}, summary: { p50, p95, success, failure, total: logs.length, now }, generatedAt: now }, { headers: secCors, isAdmin: true });
+    }
+    if (path === '/admin/config' && request.method === 'GET') {
+      return json({ config: (await loadRuntimeConfig(env)) ?? {} }, { headers: secCors, isAdmin: true });
+    }
+    if (path === '/admin/logs' && request.method === 'GET') {
+      return json({ logs: getRecentLogs() }, { headers: secCors, isAdmin: true });
+    }
+
 
     // ---- auth (vault-first, env-key fallback) ----
     const principal = await authenticate(request, env);
@@ -382,26 +406,7 @@ export default {
       return json(found as Record<string, unknown>, { headers: secCors });
     }
 
-    // ---- admin (security: no-store, noindex) ----
-    if (path === '/admin' || path === '/admin/') {
-      return html(DASHBOARD_HTML, true);
-    }
-    if (path === '/admin/stats' && request.method === 'GET') {
-      const providers = await getEffectiveProviders(env);
-      const stats = await collectStats(env, providers);
-      const logs = getRecentLogs();
-      const now = Date.now();
-      const okLatencies = logs.filter((l) => l.outcome === 'ok' && typeof l.ms === 'number').map((l) => l.ms!) .sort((a, b) => a - b);
-      const p50 = okLatencies.length ? okLatencies[Math.floor(okLatencies.length * 0.5)] : null;
-      const p95 = okLatencies.length ? okLatencies[Math.floor(okLatencies.length * 0.95)] : null;
-      const success = logs.filter((l) => l.outcome === 'ok').length;
-      const failure = logs.filter((l) => l.outcome === 'error' || l.outcome === 'skipped').length;
-      const config = await loadRuntimeConfig(env);
-      return json({ providers: stats, logs, config: config ?? {}, summary: { p50, p95, success, failure, total: logs.length, now }, generatedAt: now }, { headers: secCors, isAdmin: true });
-    }
-    if (path === '/admin/config' && request.method === 'GET') {
-      return json({ config: (await loadRuntimeConfig(env)) ?? {} }, { headers: secCors, isAdmin: true });
-    }
+    // ---- admin POST (protected) ----
     if (path === '/admin/config' && request.method === 'POST') {
       const sizeErr = checkBodySize(request, false);
       if (sizeErr) return sizeErr;
