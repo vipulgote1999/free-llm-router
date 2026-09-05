@@ -8,3 +8,11 @@
 - **Committed**: `a85fa99 feat(routing)` (carried intelligence-aware auto routing) + `3ab0a12 fix(router)` (+10 sanitize tests). `.gitignore` now covers tmp_medtrail_probe/, sample_image/, .omo/, .playwright-mcp/.
 - **Evidence**: preflight 175 passed / 28 skipped (live-only) / typecheck 0; deployed v9c8cc8b; live smoke: health ok 12 providers, 147 models, chat via openai/gpt-oss-20b → 'Hello.'
 - **Next**: re-run MedTrail probe against production; for RAG use `gemini-embedding-001`; streaming clients should hide `<thought>` tags client-side.
+
+## 2026-09-05 — server-side SSE sanitizing (autonomous follow-up)
+
+- **Asked**: strip reasoning tags in streams too, for clients that can't do it.
+- **Built**: `src/stream-sanitize.ts` — incremental `ReasoningTagStripper` (bounded 256B holdback, per-choice state, split-tag/attribute/close handling) + `wrapSSEBody` SSE reframer (JSON delta/message content only; `[DONE]`/comments/non-JSON byte-identical; 1MB pending cap). Hooked into chat success path; Workers AI synth SSE + legacy text_completion reshapes stripped; non-SSE bodies on stream requests fall back to JSON sanitizer.
+- **Bug caught by new tests**: first `scanText` dropped scanned-through text and swallowed later opens — rewrote with emit-as-you-go + nested-`<` rule; 21/21 sanitize tests green.
+- **Style root-cause fixed**: repo has no formatter config but harness biome defaults to double quotes, churning whole files (router.ts showed 501/217). Added `biome.json` pinning `quoteStyle: single` to match committed blobs; amended commit is now minimal (router.ts 21/10, new module 242/0).
+- **Evidence**: preflight 186 passed / 28 skipped / typecheck 0; deployed v5f77eea5; live SSE smoke: event-stream + [DONE], no thought tags, content '1, 2, 3'.
