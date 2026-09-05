@@ -4,9 +4,10 @@
  * Pure logic — no Cloudflare imports.
  */
 
-import type { ChatPart, ChatRequest, Capability } from './types';
-import type { ProviderConfig } from './types';
-import { PROVIDER_IDS, isKnownModelId } from './config';
+import type { ChatPart, ChatRequest, Capability } from "./types";
+import type { ProviderConfig } from "./types";
+import { PROVIDER_IDS, isKnownModelId } from "./config";
+import { getScore } from "./model-scores";
 
 export interface Caps {
   vision: boolean;
@@ -27,7 +28,7 @@ export function detect(req: ChatRequest): Caps {
 
   for (const msg of req.messages ?? []) {
     const content = msg.content;
-    if (typeof content === 'string') {
+    if (typeof content === "string") {
       chars += content.length;
       continue;
     }
@@ -36,20 +37,20 @@ export function detect(req: ChatRequest): Caps {
       continue;
     }
     for (const part of content as ChatPart[]) {
-      if (!part || typeof part !== 'object') continue;
+      if (!part || typeof part !== "object") continue;
       switch (part.type) {
-        case 'text':
-          chars += String(part.text ?? '').length;
+        case "text":
+          chars += String(part.text ?? "").length;
           break;
-        case 'image_url':
-        case 'input_image':
-        case 'image':
+        case "image_url":
+        case "input_image":
+        case "image":
           vision = true;
           chars += IMAGE_TOKEN_EST * 4;
           break;
-        case 'input_audio':
-        case 'audio_url':
-        case 'audio':
+        case "input_audio":
+        case "audio_url":
+        case "audio":
           audio = true;
           chars += AUDIO_TOKEN_EST * 4;
           break;
@@ -65,7 +66,7 @@ export function detect(req: ChatRequest): Caps {
     inputTokens + (req.max_tokens ?? req.max_completion_tokens ?? 1024);
   const reasoning =
     req.reasoning_effort !== undefined ||
-    /(^|[^a-z])(r1|reasoning)([^a-z]|$)/i.test(req.model ?? '');
+    /(^|[^a-z])(r1|reasoning)([^a-z]|$)/i.test(req.model ?? "");
 
   return { vision, audio, reasoning, inputTokens, estTotalTokens };
 }
@@ -85,15 +86,15 @@ export interface ModelSpec {
  * provider-split heuristic, because OpenRouter ids look like "nvidia/...".
  */
 export function parseModelSpec(requested: string | undefined): ModelSpec {
-  if (!requested || requested.trim() === '') return { model: 'auto' };
+  if (!requested || requested.trim() === "") return { model: "auto" };
   const spec = requested.trim();
 
-  const at = spec.lastIndexOf('@');
+  const at = spec.lastIndexOf("@");
   if (at > 0 && PROVIDER_IDS.has(spec.slice(at + 1))) {
     return { provider: spec.slice(at + 1), model: spec.slice(0, at) };
   }
   if (isKnownModelId(spec)) return { model: spec };
-  const slash = spec.indexOf('/');
+  const slash = spec.indexOf("/");
   if (slash > 0 && PROVIDER_IDS.has(spec.slice(0, slash))) {
     return { provider: spec.slice(0, slash), model: spec.slice(slash + 1) };
   }
@@ -107,6 +108,10 @@ export interface Candidate {
 
 const LONG_CONTEXT_TOKENS = 32000;
 
+function intelligenceOf(modelId: string): number {
+  return getScore(modelId)?.score ?? 0;
+}
+
 export function selectCandidates(
   spec: ModelSpec,
   caps: Caps,
@@ -117,14 +122,33 @@ export function selectCandidates(
     ? active.filter((p) => p.id === spec.provider)
     : active;
 
+  // auto: intelligence-aware routing — prefer high Artificial Analysis scores
+  // Blended priority: weight (+ reasoning boost) + intelligence score.
+  // Only affects "auto"; explicit aliases/models keep weight-ordered failover
+  // so client intent and fallback order are preserved.
+  if (spec.model === "auto") {
+    const out: (Candidate & { effective: number })[] = [];
+    for (const p of pool) {
+      if (caps.vision && !hasCapability(p, "vision")) continue;
+      if (caps.audio && !hasCapability(p, "audio")) continue;
+      const model = chooseModel(p, spec.model, caps);
+      if (!model) continue;
+      const boost = caps.reasoning && hasCapability(p, "reasoning") ? 1000 : 0;
+      const effective = p.weight + boost + intelligenceOf(model);
+      out.push({ provider: p, model, effective });
+    }
+    out.sort((a, b) => b.effective - a.effective);
+    return out.map(({ provider, model }) => ({ provider, model }));
+  }
+
   const sorted = [...pool].sort((a, b) => {
     // auto + reasoning: providers with reasoning models jump the queue
     const aBoost =
-      spec.model === 'auto' && caps.reasoning && hasCapability(a, 'reasoning')
+      spec.model === "auto" && caps.reasoning && hasCapability(a, "reasoning")
         ? 1000
         : 0;
     const bBoost =
-      spec.model === 'auto' && caps.reasoning && hasCapability(b, 'reasoning')
+      spec.model === "auto" && caps.reasoning && hasCapability(b, "reasoning")
         ? 1000
         : 0;
     return b.weight + bBoost - (a.weight + aBoost);
@@ -138,8 +162,8 @@ export function selectCandidates(
 
   const out: Candidate[] = [];
   for (const p of sorted) {
-    if (caps.vision && !hasCapability(p, 'vision')) continue;
-    if (caps.audio && !hasCapability(p, 'audio')) continue;
+    if (caps.vision && !hasCapability(p, "vision")) continue;
+    if (caps.audio && !hasCapability(p, "audio")) continue;
     const model = chooseModel(p, spec.model, caps);
     if (model) out.push({ provider: p, model });
   }
@@ -155,36 +179,56 @@ function chooseModel(
   requested: string,
   caps: Caps,
 ): string | null {
-  if (requested !== 'auto') {
+  if (requested !== "auto") {
     const found = p.models.find(
       (mm) => mm.id === requested || mm.aliases.includes(requested),
     );
     if (!found) return null;
-    if (caps.vision && !found.capabilities.includes('vision')) return null;
-    if (caps.audio && !found.capabilities.includes('audio')) return null;
+    if (caps.vision && !found.capabilities.includes("vision")) return null;
+    if (caps.audio && !found.capabilities.includes("audio")) return null;
     return found.id;
   }
 
   // auto: content decides
   let pool = p.models;
   if (caps.audio) {
-    pool = pool.filter((mm) => mm.capabilities.includes('audio'));
+    pool = pool.filter((mm) => mm.capabilities.includes("audio"));
   } else if (caps.vision) {
-    pool = pool.filter((mm) => mm.capabilities.includes('vision'));
+    pool = pool.filter((mm) => mm.capabilities.includes("vision"));
   } else {
-    pool = pool.filter((mm) => !mm.capabilities.includes('audio'));
+    pool = pool.filter((mm) => !mm.capabilities.includes("audio"));
   }
   if (pool.length === 0) return null;
 
   if (caps.reasoning) {
-    const r = pool.find((mm) => mm.capabilities.includes('reasoning'));
-    if (r) return r.id;
+    const reasoningPool = pool.filter((mm) =>
+      mm.capabilities.includes("reasoning"),
+    );
+    if (reasoningPool.length > 0) {
+      // ponytail: pick highest-intelligence reasoning model; stable for equal scores
+      const sorted = [...reasoningPool].sort(
+        (a, b) => intelligenceOf(b.id) - intelligenceOf(a.id),
+      );
+      return sorted[0]!.id;
+    }
   }
   if (caps.estTotalTokens > LONG_CONTEXT_TOKENS) {
-    const fit = pool
-      .filter((mm) => mm.context >= caps.estTotalTokens)
-      .sort((a, b) => b.context - a.context);
-    if (fit[0]) return fit[0].id;
+    const fit = pool.filter((mm) => mm.context >= caps.estTotalTokens);
+    if (fit.length > 0) {
+      const sorted = [...fit].sort((a, b) => {
+        const sa = intelligenceOf(a.id);
+        const sb = intelligenceOf(b.id);
+        if (sb !== sa) return sb - sa;
+        return b.context - a.context;
+      });
+      return sorted[0]!.id;
+    }
   }
-  return pool[0]?.id ?? null;
+  // default auto: highest intelligence in the capability-filtered pool
+  {
+    const sorted = [...pool].sort(
+      (a, b) => intelligenceOf(b.id) - intelligenceOf(a.id),
+    );
+    return sorted[0]?.id ?? null;
+  }
 }
