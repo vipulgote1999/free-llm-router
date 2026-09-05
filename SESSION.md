@@ -18,6 +18,7 @@
 - **Evidence**: preflight 186 passed / 28 skipped / typecheck 0; deployed v5f77eea5; live SSE smoke: event-stream + [DONE], no thought tags, content '1, 2, 3'.
 
 ## 2026-09-05 — commit + push (user-approved)
+
 - **Pushed** 6 commits to `origin/main` (`d01b619..9dd6546`): intelligence-aware routing, thought-strip + score fixes, SSE sanitizing, session logs, and a `style:` convergence commit.
 - **Style root-cause closed**: harness biome defaults (tabs/double/80-col) were churning whole files. `biome.json` now pins the repo's actual convention (space/2/single quotes/180-col); `biome format` check is at a fixed point, so future autofixes are no-ops. Verified: preflight 186 passed / typecheck 0 after formatting.
 - Note: `detect.ts`/`model-scores.ts`/`routing-accuracy.test.ts` still carry double quotes from the earlier pass — they flip to single automatically next time they're touched. No action needed.
