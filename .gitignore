@@ -5,3 +5,8 @@ node_modules/
 .bigpowers/
 *.log
 dist/
+# local probe artifacts (live-router smoke tests, sample images, tool state)
+tmp_medtrail_probe/
+sample_image/
+.omo/
+.playwright-mcp/

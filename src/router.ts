@@ -493,8 +493,12 @@ async function routeWithEndpoint(
         return passthrough(res, cand.provider.id, cand.model);
       }
 
-      // ---- success (2xx) — pass through untouched ----
+      // ---- success (2xx) — strip reasoning leakage for non-streaming chat, else passthrough untouched ----
       finish('ok');
+      if (endpoint.includes('chat/completions') && body.stream !== true) {
+        const clean = await sanitizeChatContent(res);
+        if (clean) return passthrough(clean, cand.provider.id, cand.model);
+      }
       return passthrough(res, cand.provider.id, cand.model);
     }
   }
@@ -601,8 +605,10 @@ export async function routeRaw(
   let modelStr = 'auto';
   const ct = request.headers.get('content-type') ?? '';
   // Attempt to extract model from query or from body string for simple cases
-  const url = new URL(request.url);
-  if (url.searchParams.get('model')) modelStr = url.searchParams.get('model')!;
+  try {
+    const url = new URL(request.url);
+    if (url.searchParams.get('model')) modelStr = url.searchParams.get('model')!;
+  } catch { /* keep modelStr='auto' */ }
   // Also try to peek bodyBytes if small JSON
   if (!bodyBytes && request.method === 'POST') {
     try {
@@ -735,8 +741,8 @@ async function callCloudflareAI(
     const result = (await env.AI.run(model, {
       prompt: text,
       max_tokens: (body as { max_tokens?: number }).max_tokens ?? 1024,
-    })) as { response?: string };
-    const content = result?.response ?? '';
+    })) as { response?: unknown };
+    const content = aiText((result as { response?: unknown })?.response);
     const payload = {
       id: `cmpl-${crypto.randomUUID()}`,
       object: 'text_completion',
@@ -757,9 +763,9 @@ async function callCloudflareAI(
         ?? (body as { max_completion_tokens?: number }).max_completion_tokens ?? 1024,
       temperature: (body as { temperature?: unknown }).temperature,
       top_p: (body as { top_p?: unknown }).top_p,
-    })) as { response?: string };
+    })) as { response?: unknown };
 
-    const content = result?.response ?? '';
+    const content = aiText((result as { response?: unknown })?.response);
     const isStreaming = (body as { stream?: boolean }).stream;
     if (isStreaming) {
       // Synthesize minimal SSE stream for compatibility
@@ -820,6 +826,51 @@ async function callCloudflareAI(
 }
 
 // ----------------------------------------------------------------- helpers
+
+/**
+ * Strip leaked reasoning blocks (<thought>/<think>/<thinking>/<reasoning>)
+ * that some upstream free-tier models prepend to chat content. Returns the
+ * original string untouched (same reference) when no tags are present so
+ * callers can skip re-serialization. Streaming responses are NOT stripped —
+ * buffering the stream would defeat first-token latency, so clients that
+ * render streams must strip (or hide) these tags themselves.
+ */
+export function stripReasoningTags(content: string): string {
+  const stripped = content
+    .replace(/<(thought|think|thinking|reasoning)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<(thought|think|thinking|reasoning)\b[^>]*>[\s\S]*$/gi, '');
+  return stripped === content ? content : stripped.trim();
+}
+
+/** Workers AI `response` is usually a string but can be an object/array in JSON
+ *  mode — OpenAI parity requires message content to be a string. */
+function aiText(raw: unknown): string {
+  if (typeof raw === 'string') return raw;
+  if (raw == null) return '';
+  try {
+    return JSON.stringify(raw) ?? '';
+  } catch {
+    return String(raw);
+  }
+}
+
+/** If a non-streaming JSON chat response carries reasoning leakage in
+ *  message.content, return a cleaned Response; else null (use original). */
+async function sanitizeChatContent(res: Response): Promise<Response | null> {
+  const ct = res.headers.get('content-type') ?? '';
+  if (!ct.includes('application/json')) return null;
+  try {
+    const j = (await res.clone().json()) as { choices?: { message?: { content?: unknown } }[] };
+    const msg = j?.choices?.[0]?.message;
+    if (!msg || typeof msg.content !== 'string') return null;
+    const stripped = stripReasoningTags(msg.content);
+    if (stripped === msg.content) return null;
+    msg.content = stripped;
+    return new Response(JSON.stringify(j), { status: res.status, headers: res.headers });
+  } catch {
+    return null;
+  }
+}
 
 function retryAfterSeconds(res: Response): number {
   const clamp = (s: number) => Math.min(Math.max(s, 1), 86400);
