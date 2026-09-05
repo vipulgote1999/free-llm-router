@@ -10,10 +10,10 @@
 
 import { detect, selectCandidates } from './detect';
 import { parseModelSpec } from './detect';
+import { wrapSSEBody } from './stream-sanitize';
 import {
   bucketsFor,
   getModelLimits,
-  getProviders,
 } from './config';
 import { getEffectiveProviders } from './runtime';
 import { jsonErr } from './http';
@@ -493,9 +493,15 @@ async function routeWithEndpoint(
         return passthrough(res, cand.provider.id, cand.model);
       }
 
-      // ---- success (2xx) — strip reasoning leakage for non-streaming chat, else passthrough untouched ----
+      // ---- success (2xx) — strip reasoning leakage (JSON + SSE), else passthrough ----
       finish('ok');
-      if (endpoint.includes('chat/completions') && body.stream !== true) {
+      if (endpoint.includes('chat/completions')) {
+        if (body.stream === true) {
+          const sse = wrapSSEBody(res);
+          if (sse) return passthrough(sse, cand.provider.id, cand.model);
+          // Non-SSE body on a stream request (e.g. upstream error-as-200):
+          // fall through to the JSON sanitizer below.
+        }
         const clean = await sanitizeChatContent(res);
         if (clean) return passthrough(clean, cand.provider.id, cand.model);
       }
@@ -563,7 +569,9 @@ async function callUpstream(
         const clone = res.clone();
         const j = await clone.json() as { choices?: { message?: { content?: string } }[]; id?: string; model?: string; created?: number; usage?: unknown };
         if (j.choices && j.choices[0]?.message) {
-          const text = j.choices[0]?.message?.content ?? '';
+          const text = stripReasoningTags(
+            j.choices[0]?.message?.content ?? '',
+          );
           const payload = {
             id: j.id ?? `cmpl-${crypto.randomUUID()}`,
             object: 'text_completion',
@@ -712,7 +720,6 @@ export async function routeRaw(
         await doCall(stub, { op: 'cooldown', bucket: bucket.id, seconds: 30, note: 'network error' });
         attempt.reason = 'network_error';
         finish('error');
-        continue;
       }
     }
   }
@@ -742,7 +749,9 @@ async function callCloudflareAI(
       prompt: text,
       max_tokens: (body as { max_tokens?: number }).max_tokens ?? 1024,
     })) as { response?: unknown };
-    const content = aiText((result as { response?: unknown })?.response);
+    const content = stripReasoningTags(
+      aiText((result as { response?: unknown })?.response),
+    );
     const payload = {
       id: `cmpl-${crypto.randomUUID()}`,
       object: 'text_completion',
@@ -765,7 +774,9 @@ async function callCloudflareAI(
       top_p: (body as { top_p?: unknown }).top_p,
     })) as { response?: unknown };
 
-    const content = aiText((result as { response?: unknown })?.response);
+    const content = stripReasoningTags(
+      aiText((result as { response?: unknown })?.response),
+    );
     const isStreaming = (body as { stream?: boolean }).stream;
     if (isStreaming) {
       // Synthesize minimal SSE stream for compatibility
@@ -831,9 +842,9 @@ async function callCloudflareAI(
  * Strip leaked reasoning blocks (<thought>/<think>/<thinking>/<reasoning>)
  * that some upstream free-tier models prepend to chat content. Returns the
  * original string untouched (same reference) when no tags are present so
- * callers can skip re-serialization. Streaming responses are NOT stripped —
- * buffering the stream would defeat first-token latency, so clients that
- * render streams must strip (or hide) these tags themselves.
+ * callers can skip re-serialization. Streaming responses are sanitized
+ * incrementally by wrapSSEBody (see stream-sanitize.ts), which holds back
+ * only undecided bytes so first-token latency is preserved.
  */
 export function stripReasoningTags(content: string): string {
   const stripped = content
