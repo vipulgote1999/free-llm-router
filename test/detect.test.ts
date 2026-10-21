@@ -126,6 +126,15 @@ describe("parseModelSpec", () => {
       model: "meta-llama/llama-3.3-70b-instruct:free",
     });
   });
+
+  it("keeps ModelPulseX-only ids with a provider prefix intact", () => {
+    expect(parseModelSpec("openrouter/free")).toEqual({
+      model: "openrouter/free",
+    });
+    expect(parseModelSpec("nvidia/nemotron-3.5-super-vl:free")).toEqual({
+      model: "nvidia/nemotron-3.5-super-vl:free",
+    });
+  });
 });
 
 describe("selectCandidates", () => {

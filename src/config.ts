@@ -477,8 +477,22 @@ const PROVIDERS: ProviderConfig[] = [
 
 export const PROVIDER_IDS = new Set<string>(PROVIDERS.map((p) => p.id));
 
+/**
+ * Exact model ids (and the aliases the router derives for them) that exist
+ * only in the checked-in ModelPulseX catalog. They are merged into provider
+ * catalogs at request time, so `parseModelSpec` must recognize them too —
+ * otherwise ids like `openrouter/free` get split into provider `openrouter`
+ * + model `free`.
+ */
+const MPX_MODEL_IDS: Set<string> = new Set();
+for (const row of MPX_CATALOG) {
+  MPX_MODEL_IDS.add(normalizeModelId(row.id));
+  for (const alias of derivedAliases(row.id)) MPX_MODEL_IDS.add(alias);
+}
+
 /** True when the string is a registered model id or alias on any provider. */
 export function isKnownModelId(id: string): boolean {
+  if (MPX_MODEL_IDS.has(id)) return true;
   return PROVIDERS.some(
     (p) => p.models.some((m) => m.id === id || m.aliases.includes(id)),
   );
