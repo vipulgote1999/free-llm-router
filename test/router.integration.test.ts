@@ -273,6 +273,26 @@ describe('routeChat end-to-end (mocked DO + upstreams)', () => {
     expect(res.headers.get('x-router-provider')).toBe('cerebras');
   });
 
+  it('fails over on a top-level 400 invalid_model body', async () => {
+    const f = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ object: 'error', message: 'Invalid model: not-real', type: 'invalid_model', code: '1500' }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(upstreamResponse('next provider'));
+    vi.stubGlobal('fetch', f);
+    const env = makeEnv({ GROQ_API_KEY: 'g', CEREBRAS_API_KEY: 'c' });
+    const res = await routeChat(makeRequest('gpt-oss'), env as never, {
+      model: 'gpt-oss',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-router-provider')).toBe('cerebras');
+  });
+
   it('fails over on a 400 "Model is unavailable" body', async () => {
     const f = vi
       .fn()

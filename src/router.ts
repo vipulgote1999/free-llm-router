@@ -136,7 +136,7 @@ async function isContextLengthError(res: Response): Promise<boolean> {
 }
 
 function isModelUnavailableMessage(message: string): boolean {
-  return /model.*(unavailable|not found|does not exist|deprecated|invalid model)|deprecated model/i.test(message);
+  return /invalid model|model.*(unavailable|not found|does not exist|deprecated)|deprecated model/i.test(message);
 }
 
 /**
@@ -155,8 +155,9 @@ async function isModelUnavailableResponse(res: Response): Promise<boolean> {
         error?: { message?: string; code?: string; type?: string };
         message?: string;
         detail?: string;
+        type?: string;
       };
-      const text = [j?.error?.message, j?.error?.code, j?.error?.type, j?.message, j?.detail].filter(Boolean).join(' ');
+      const text = [j?.error?.message, j?.error?.code, j?.error?.type, j?.message, j?.detail, j?.type].filter(Boolean).join(' ');
       if (text && isModelUnavailableMessage(text)) return true;
     } catch {
       // fall through to the status-based default
