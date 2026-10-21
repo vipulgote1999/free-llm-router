@@ -733,6 +733,14 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
       /* not JSON */
     }
   }
+  if (bodyBytes && (contentType ?? '').includes('application/json') && request.method === 'POST') {
+    try {
+      const j = JSON.parse(new TextDecoder().decode(bodyBytes)) as Record<string, unknown>;
+      if (typeof j.model === 'string') modelStr = j.model;
+    } catch {
+      /* not JSON */
+    }
+  }
 
   const caps = {
     vision: endpoint.includes('image'),
@@ -810,10 +818,23 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
           else headers['authorization'] = `Bearer ${bucket.key}`;
         }
         const timeoutMs = Number(env.UPSTREAM_TIMEOUT_MS) || 300000;
-        const res = await fetch(`${cand.provider.baseUrl}${endpoint}`, {
+        // JSON bodies are rewritable: send the provider's concrete model id.
+        let outboundBody: BodyInit | null = bodyBytes as BodyInit | null;
+        if (bodyBytes && (contentType ?? '').includes('application/json')) {
+          try {
+            const parsed = JSON.parse(new TextDecoder().decode(bodyBytes)) as Record<string, unknown>;
+            parsed.model = cand.model;
+            outboundBody = new TextEncoder().encode(JSON.stringify(parsed)).buffer as BodyInit;
+          } catch {
+            /* pass through non-JSON bodies untouched */
+          }
+        }
+        // Provider base URLs already end in /v1; strip the router's /v1 prefix.
+        const rawPath = endpoint.replace(/^\/v1(?=\/)/, '');
+        const res = await fetch(`${cand.provider.baseUrl}${rawPath}`, {
           method: request.method,
           headers,
-          body: bodyBytes as BodyInit | null,
+          body: outboundBody,
           signal: AbortSignal.timeout(timeoutMs),
         });
         const status = res.status;

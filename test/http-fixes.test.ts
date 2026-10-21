@@ -93,3 +93,30 @@ describe('VaultDO touchKey', () => {
     vi.useRealTimers();
   });
 });
+
+describe('routeRaw JSON requests', () => {
+  it('routes by the explicit model and rewrites the upstream model id', async () => {
+    const urls: string[] = [];
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        if (String(url).includes('/images/generations')) {
+          urls.push(String(url));
+          const raw = init.body;
+          bodies.push(raw instanceof ArrayBuffer ? new TextDecoder().decode(raw) : String(raw));
+        }
+        return json({ data: [] });
+      }),
+    );
+    const env = makeEnv({ OPENROUTER_API_KEY: 'o' });
+    const res = await worker.fetch(
+      authRequest('/v1/images/generations', { model: 'openrouter/nvidia/nemotron-3.5-super-vl:free', prompt: 'cat' }),
+      env as never,
+      {} as never,
+    );
+    expect(res.status).toBe(200);
+    expect(urls[0]).toBe('https://openrouter.ai/api/v1/images/generations');
+    expect(bodies[0]).toContain('"model":"nvidia/nemotron-3.5-super-vl:free"');
+  });
+});
