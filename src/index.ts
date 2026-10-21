@@ -95,10 +95,6 @@ async function authenticate(
   return null;
 }
 
-function isAdminPath(path: string): boolean {
-  return path === '/admin' || path === '/admin/' || path.startsWith('/admin/');
-}
-
 async function modelsList(env: Env) {
   const providers = await getEffectiveProviders(env);
   const out: unknown[] = [];
@@ -139,10 +135,6 @@ async function modelRetrieve(env: Env, id: string): Promise<unknown | null> {
     }
   }
   return null;
-}
-
-function normalizePath(pathname: string): string {
-  return pathname;
 }
 
 // ---- validation helpers (defense) ----
@@ -188,7 +180,7 @@ function validateEmbeddingBody(body: Record<string, unknown>): string | null {
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    const path = normalizePath(url.pathname);
+    const path = url.pathname;
     const cors = corsHeaders(request, env);
 
     // Security: always add Vary for CORS
@@ -387,7 +379,12 @@ export default {
       return json(await modelsList(env), { headers: secCors });
     }
     if ((path.startsWith('/v1/models/') || path.startsWith('/models/')) && request.method === 'GET') {
-      const id = decodeURIComponent(path.replace(/^\/(v1\/)?models\//, ''));
+      let id: string;
+      try {
+        id = decodeURIComponent(path.replace(/^\/(v1\/)?models\//, ''));
+      } catch {
+        return jsonErr(400, 'invalid model id', undefined, { code: 'invalid_request' });
+      }
       if (!id) return jsonErr(400, 'model id required', undefined, { code: 'invalid_request' });
       if (id.length > 200) return jsonErr(400, 'model id too long', undefined, { code: 'invalid_request' });
       const found = await modelRetrieve(env, id);
@@ -538,9 +535,6 @@ export default {
         const parsed = await readJson();
         if (!parsed.ok) return parsed.response;
         try {
-          if (path.includes('/images/generations') || path.includes('/audio/speech')) {
-            return await routeRaw(request, env, path.includes('/v1/') ? path : `/v1${path}`, null, ct);
-          }
           const bodyBytes = new TextEncoder().encode(JSON.stringify(parsed.body)).buffer;
           return await routeRaw(request, env, path.startsWith('/v1') ? path : `/v1${path}`, bodyBytes, 'application/json');
         } catch (err) {
@@ -567,23 +561,6 @@ export default {
     const postOnly = ['/v1/chat/completions', '/chat/completions', '/v1/completions', '/completions', '/v1/embeddings', '/embeddings'];
     if (postOnly.includes(path)) {
       return jsonErr(405, 'POST only', undefined, { code: 'method_not_allowed' });
-    }
-
-    if (path.startsWith('/v1/') && request.method === 'POST') {
-      const sizeErr = checkBodySize(request, false);
-      if (sizeErr) return sizeErr;
-      const ct = request.headers.get('content-type') ?? '';
-      if (ct.includes('application/json')) {
-        try {
-          const body = (await request.clone().json()) as Record<string, unknown>;
-          if (body && typeof body.model === 'string' && isSafeModelId(body.model)) {
-            try {
-              return await routeEmbedding(request, env, body);
-            } catch { /* fall through */ }
-          }
-        } catch { /* ignore */ }
-      }
-      return jsonErr(404, `endpoint '${path.slice(0,100)}' not found — see GET / for endpoints`, undefined, { code: 'not_found' });
     }
 
     return jsonErr(404, `not found — see GET / for endpoints`, undefined, { code: 'not_found' });

@@ -40,7 +40,7 @@ type VaultOp =
   | { op: 'revokeKeyByPrefix'; prefix: string }
   | { op: 'deleteKeyByPrefix'; prefix: string }
   | { op: 'checkKey'; key: string }
-  | { op: 'touchKey'; hash: string }
+  | { op: 'touchKey'; key: string }
   | { op: 'changePassword'; oldPassword: string; newPassword: string }
   | { op: 'getConfig' }
   | { op: 'setConfig'; config: unknown }
@@ -110,7 +110,7 @@ export class VaultDO extends DurableObject {
       case 'checkKey':
         return respond(await this.checkKey(op.key));
       case 'touchKey':
-        return respond(await this.touchKey(op.hash));
+        return respond(await this.touchKey(op.key));
       case 'changePassword':
         return respond(await this.changePassword(op.oldPassword, op.newPassword));
       case 'getConfig':
@@ -260,7 +260,9 @@ export class VaultDO extends DurableObject {
     return { ok: true, record: sanitizeKeyRecord(r) };
   }
 
-  private async touchKey(hash: string): Promise<{ ok: boolean }> {
+  private async touchKey(key: string): Promise<{ ok: boolean }> {
+    if (!isValidApiKeyShape(key)) return { ok: false };
+    const hash = await sha256Hex(key);
     const r = this.keys.get(hash);
     if (r) {
       r.lastUsedAt = Date.now();
@@ -268,8 +270,9 @@ export class VaultDO extends DurableObject {
       if (!this.touchTimer) {
         this.touchTimer = setTimeout(() => void this.persist(), 5000) as unknown as ReturnType<typeof setTimeout>;
       }
+      return { ok: true };
     }
-    return { ok: true };
+    return { ok: false };
   }
   private touchTimer?: ReturnType<typeof setTimeout>;
 
