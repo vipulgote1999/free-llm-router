@@ -65,3 +65,11 @@ describe('bakedSnapshot', () => {
     vi.useRealTimers();
   });
 });
+
+describe('ranking staleness', () => {
+  it('keeps ranking a recent payload even when ModelPulseX flags it stale', async () => {
+    const recent = { ...payload, meta: { last_benchmark: new Date().toISOString(), is_stale: true } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(recent), { status: 200 })));
+    expect((await loadMpxSnapshot()).stale).toBe(false);
+  });
+});

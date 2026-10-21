@@ -49,10 +49,10 @@ async function fetchLive(env: SourceEnv): Promise<MpxSnapshot | undefined> {
     if (snapshot.rows.length === 0) return undefined;
 
     const last = snapshot.lastBenchmark ? Date.parse(snapshot.lastBenchmark) : Number.NaN;
-    if (Number.isFinite(last) && Date.now() - last > MAX_STALE_MS) {
-      return { ...snapshot, stale: true };
-    }
-    return snapshot;
+    // ModelPulseX's own is_stale flag fires at 18 minutes; ranking may use
+    // measurements until the spec's 6-hour limit.
+    const stale = Number.isFinite(last) ? Date.now() - last > MAX_STALE_MS : snapshot.stale;
+    return { ...snapshot, stale };
   } catch {
     return undefined;
   }
