@@ -26,7 +26,7 @@ function parseArgs() {
     return i !== -1 && a[i + 1] ? a[i + 1] : dflt;
   };
   return {
-    base: get('--base', 'https://free-llm-router.vipulgote4.workers.dev'),
+    base: get('--base', 'https://free-llm-router.vipulgote5.workers.dev'),
     iters: Number(get('--iters', '3')),
     conc: Number(get('--conc', '12')),
     suite: get('--suite', 'all'),

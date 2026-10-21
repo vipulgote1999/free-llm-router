@@ -8,7 +8,7 @@
 
 import type { BucketState, ProviderConfig } from './types';
 import { DAY_MS, MINUTE_MS } from './windows';
-import { AA_SCORES } from './model-scores';
+import { getScore } from './model-scores';
 
 interface AdminEnv {
   LIMITER: DurableObjectNamespace;
@@ -80,7 +80,7 @@ export async function collectStats(
         disabledReason: p.disabledReason,
         buckets,
         scores: Object.fromEntries(
-          p.models.map((mm) => [mm.id, (AA_SCORES as Record<string, { score: number | null; aaSlug: string; rank?: string; estimated?: boolean }>)[mm.id] ?? null]),
+          p.models.map((mm) => [mm.id, getScore(mm.id) ?? null]),
         ),
       };
     }),
@@ -568,7 +568,7 @@ function renderChain(logs){
   var rev=[].slice.call(logs).reverse(); var lastTs = rev[0] ? rev[0].ts : 0; var burst=[]; for(var i=0;i<rev.length;i++){if(lastTs - rev[i].ts < 2500) burst.push(rev[i]);} burst.reverse();
   if(burst.length===0){el.innerHTML='<div class="muted">no recent burst</div>'; return;}
   var html='<div class="chain">';
-  for(var i=0;i<burst.length;i++){var l=burst[i]; var ok=l.outcome==='ok'; html+='<span class="step '+(ok?'ok':'fail')+'">'+l.provider+'<span class="muted"> / '+esc(l.model).slice(0,22)+'</span> <span class="pill">'+l.reason+'</span>'+(l.ms!=null?' <span class="muted">'+l.ms+'ms</span>':'')+'</span>'; if(i<burst.length-1) html+='<span class="muted">→</span>';}
+  for(var i=0;i<burst.length;i++){var l=burst[i]; var ok=l.outcome==='ok'; html+='<span class="step '+(ok?'ok':'fail')+'">'+esc(l.provider)+'<span class="muted"> / '+esc(l.model).slice(0,22)+'</span> <span class="pill">'+esc(l.reason)+'</span>'+(l.ms!=null?' <span class="muted">'+l.ms+'ms</span>':'')+'</span>'; if(i<burst.length-1) html+='<span class="muted">→</span>';}
   html+='</div>'; var fails=0, okCount=0; for(var i=0;i<burst.length;i++){if(burst[i].outcome!=='ok') fails++; else okCount++;} html+='<div class="muted mono" style="font-size:11px; line-height:16px; margin-top:8px">'+burst.length+' hops · '+fails+' skipped/failed · '+okCount+' ok · last at '+fmt(burst[burst.length-1].ts)+'</div>';
   if(okCount===0) html+='<div style="margin-top:8px; color:var(--amber); font-size:11px; line-height:16px">All providers exhausted — client received <code>503 all providers exhausted</code> with <code>tried[]</code>. Add keys or increase limits.</div>';
   el.innerHTML=html;
