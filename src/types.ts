@@ -70,6 +70,8 @@ export interface ModelInfo {
   context: number;
   /** per-model free-tier limits (falls back to provider defaults) */
   limits?: Partial<Limits>;
+  /** ModelPulseX free status; false = explicitly retired/paid, undefined = unverified */
+  free?: boolean;
 }
 
 export type ProviderId =
@@ -104,6 +106,8 @@ export interface ProviderConfig {
   weight: number;
   /** default models picked for auto-routing */
   auto: { text: string; vision: string; audio: string };
+  /** true when an admin explicitly set the corresponding auto.* value */
+  autoOverride?: { text?: boolean; vision?: boolean; audio?: boolean };
   models: ModelInfo[];
   disabled?: boolean;
   disabledReason?: string;

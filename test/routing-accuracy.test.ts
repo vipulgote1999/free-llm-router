@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { detect, parseModelSpec, selectCandidates } from "../src/detect";
-import { getProviders } from "../src/config";
+import { getProviders, isFreeForAuto } from "../src/config";
 import type { ChatRequest } from "../src/types";
 
 const env = {
@@ -33,19 +33,21 @@ interface Fixture {
 
 const fixtures: Fixture[] = [
   {
-    name: "text-only auto → intelligence-blended (opencode opus-5 first, zen muse-spark second)",
+    name: "text-only auto → verified-free models only",
     run: () => {
       const cands = selectCandidates(
         parseModelSpec(undefined),
         detect(req({ messages: [{ role: "user", content: "hi" }] })),
         providers(),
       );
-      // intelligence-aware: opencode claude-opus-5 (63) 125+63=188 beats zen muse-spark (57) 130+57=187
       return (
-        cands[0]?.provider.id === "opencode" &&
-        cands[0]?.model === "claude-opus-5" &&
-        cands[1]?.provider.id === "zen" &&
-        cands[1]?.model === "muse-spark-1.2-contributor-free"
+        cands.length > 0 &&
+        cands.every((c) => isFreeForAuto(c.provider, c.model)) &&
+        !cands.some(
+          (c) =>
+            c.model === "claude-opus-5" ||
+            c.model === "muse-spark-1.2-contributor-free",
+        )
       );
     },
   },
@@ -112,7 +114,7 @@ const fixtures: Fixture[] = [
     },
   },
   {
-    name: "reasoning request → reasoning models preferred on reasoning providers",
+    name: "reasoning request → verified-free reasoning model on a reasoning provider",
     run: () => {
       const cands = selectCandidates(
         parseModelSpec(undefined),
@@ -120,10 +122,9 @@ const fixtures: Fixture[] = [
         providers(),
       );
       const cf = cands.find((c) => c.provider.id === "cloudflare");
-      const or = cands.find((c) => c.provider.id === "openrouter");
       return (
         cf?.model === "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b" &&
-        or?.model === "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+        cands.every((c) => isFreeForAuto(c.provider, c.model))
       );
     },
   },
