@@ -38,3 +38,10 @@
 - **Fixed**: (1) `isKnownModelId` now includes checked-in ModelPulseX ids/derived aliases, so `openrouter/free` and `nvidia/nemotron-3.5-super-vl:free` are no longer split into `provider/model` and retried as literal models on all 8 providers; (2) `retryAfterSeconds` distinguishes epoch-ms (OpenRouter) from epoch-s `x-ratelimit-reset`, ending 24h blackouts from a single 429; (3) non-streaming chat responses with empty assistant content fail over instead of returning a blank 200, while tool calls, refusals, and `finish_reason:"length"` pass through. Chat bodies are parsed once (`inspectChatContent`), not twice.
 - **Evidence**: `npm test` 237 passed / 28 live-skipped; `npm run typecheck` clean; deployed `21fe6773`. Live: `openrouter/free` → `openrouter:openrouter/free`; `nvidia/nemotron-3.5-super-vl:free` → `openrouter:nvidia/nemotron-3.5-super-vl:free`; OpenRouter 429 cooldown now midnight UTC (~8.2h), not +24h; NVIDIA diffusion model → `503 empty_response`; Gemini `200 OK`.
 - **Deferred**: env-only slash ids (e.g. `OLLAMA_MODELS="nvidia/foo"`) can still be split; one transient `/admin/reset` Worker exception while clearing 12 DOs (retries 200).
+
+## 2026-10-21 — kilocode + Ollama Cloud providers (top-30 coverage)
+
+- **Reviewed ModelPulseX source** (`src/providers/*`, `registry.ts`): its 19 providers vs the router's 12; the top-30 gaps were entirely kilocode (8 models) and Ollama Cloud (5 models).
+- **Added**: `kilocode` — `https://api.kilo.ai/api/gateway`, keyless with optional `KILOCODE_API_KEY`, 10 RPM / 200 RPD, 11 ModelPulseX-verified free models, weight 65. `ollama_cloud` — `https://ollama.com/v1`, required `OLLAMA_API_KEY`, 10 RPM / 100 RPD, 7-model free allowlist, weight 40. Self-hosted `ollama` is untouched.
+- **Keys**: `OLLAMA_API_KEY` copied from ModelPulseX's backup `.dev.vars` (current file has it empty) into the Worker secret; kilocode works keyless.
+- **Evidence**: preflight 248 passed / 32 skipped, typecheck clean; deployed `c888f750`. Live: 8/8 kilocode, 6/6 Ollama Cloud (incl. `nemotron-3-super`), bare `openrouter/free` → 200 via kilocode during OpenRouter's daily cooldown, `auto` → 200 via mistral/codestral-latest.

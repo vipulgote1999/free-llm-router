@@ -3,7 +3,7 @@
 Read CONVENTIONS.md before any GitHub or git operation.
 
 ## Project
-OpenAI-compatible router aggregating 12 free LLM providers on Cloudflare Workers with rate-limit tracking, failover, and content-aware routing.
+OpenAI-compatible router aggregating 14 free LLM providers on Cloudflare Workers with rate-limit tracking, failover, and content-aware routing.
 Stack: TypeScript, Cloudflare Workers, Durable Objects, Vitest
 
 ## Commands

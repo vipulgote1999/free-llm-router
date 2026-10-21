@@ -42,6 +42,26 @@ google/diffusiongemma-26b-a4b-it → 503, tried: nvidia:google/diffusiongemma-26
 gemini-flash-lite-latest          → 200 "OK"
 ```
 
-Remaining non-code gaps: kilocode is not a configured provider; Ollama needs `OLLAMA_BASE_URL`. OpenRouter's free daily cap is an account quota, not a router fault.
+Remaining non-code gaps: OpenRouter's free daily cap is an account quota, not a router fault.
 
 Note: one `POST /admin/reset` returned a transient Worker exception while clearing 12 DOs; two immediate retries returned 200.
+
+## Provider additions (2026-10-21, `ecf9de1`, deployed `c888f750`)
+
+Added the two providers that owned all 13 unroutable top-30 models:
+
+| Provider | Config | Live probe (`max_tokens: 4096`) |
+|---|---|---|
+| `kilocode` | `https://api.kilo.ai/api/gateway`, optional `KILOCODE_API_KEY`, 10 RPM / 200 RPD, 11 catalog free models | **8/8** top-30 models passed (`reflection/beam-free`, `minimax/minimax-m3.1-flash:free`, `openrouter/free`, `nvidia/nemotron-3.5-super-vl:free`, `cohere/north-mini-code:free`, `kilo-auto/free`, `nvidia/nemotron-3.5-content-safety:free`, `dots-studio/dots-3-note-preview:free`) |
+| `ollama_cloud` | `https://ollama.com/v1`, `OLLAMA_API_KEY`, 10 RPM / 100 RPD, 7-model free allowlist | **6/6** passed (`gemma4:31b`, `nemotron-3-nano:30b`, `gpt-oss:20b`, `gpt-oss:120b`, `nemotron-3-ultra`, `nemotron-3-super`) |
+
+Cross-provider failover verified while OpenRouter was in its daily cooldown:
+
+```
+openrouter/free                   → 200 via kilocode
+nvidia/nemotron-3.5-super-vl:free → 200 via kilocode
+auto                              → 200 via mistral/codestral-latest (unchanged)
+```
+
+All 13 previously unroutable top-30 models now pass. Self-hosted `ollama` remains unchanged and disabled without `OLLAMA_BASE_URL`.
+
