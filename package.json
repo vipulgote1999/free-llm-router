@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "bench": "node scripts/benchmark.mjs",
-    "bench:accuracy": "vitest run test/routing-accuracy.test.ts"
+    "bench:accuracy": "vitest run test/routing-accuracy.test.ts",
+    "sync:modelpulse": "node scripts/sync-modelpulse.mjs"
   },
   "devDependencies": {
     "openai": "^7.5.0",
