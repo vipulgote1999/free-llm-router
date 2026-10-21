@@ -227,6 +227,11 @@ function classifyErrorForCooldown(status: number, bodyIndicatesContextExceeded: 
   return { seconds: 0, reason: 'client_error', retryable: false };
 }
 
+/** Workers AI only serves @cf/* model ids; don't burn a hop on arbitrary ids. */
+function canServeGeneric(p: ProviderConfig, model: string): boolean {
+  return p.id !== 'cloudflare' || model.startsWith('@cf/');
+}
+
 // Build candidate chain with fallback expansion.
 function buildCandidateChain(
   modelStr: string | undefined,
@@ -258,7 +263,7 @@ function buildCandidateChain(
   // This handles embeddings models like text-embedding-3-small that may not be
   // in the strict capability map but are still servable by providers.
   if (primary.length === 0 && modelStr && modelStr !== 'auto') {
-    const active = [...providers].filter((p) => !p.disabled).sort((a, b) => b.weight - a.weight);
+    const active = [...providers].filter((p) => !p.disabled && canServeGeneric(p, primarySpec.model)).sort((a, b) => b.weight - a.weight);
     // For embeddings endpoint, prefer providers with embeddings capability if any exist
     const wantEmbeddings = endpoint.includes('embeddings');
     const filtered = wantEmbeddings ? active.filter((p) => p.models.some((m) => m.capabilities.includes('embeddings'))) : active;
@@ -274,7 +279,7 @@ function buildCandidateChain(
     // For fallbacks we also want to filter by caps (vision/audio) but allow generic if no match
     let cands = selectCandidates(spec, caps as never, providers);
     if (cands.length === 0 && spec.model !== 'auto') {
-      const active = [...providers].filter((p) => !p.disabled).sort((a, b) => b.weight - a.weight);
+      const active = [...providers].filter((p) => !p.disabled && canServeGeneric(p, spec.model)).sort((a, b) => b.weight - a.weight);
       cands = active.map((p) => ({ provider: p, model: spec.model }));
     }
     for (const c of cands) {

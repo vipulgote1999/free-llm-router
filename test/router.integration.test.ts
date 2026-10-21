@@ -335,6 +335,25 @@ describe('routeChat end-to-end (mocked DO + upstreams)', () => {
     expect(j.error.tried.length).toBeGreaterThan(0);
   });
 
+  it('returns 404 for an unknown embedding model without calling Workers AI', async () => {
+    const f = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: 'Model is unavailable.' } }), {
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', f);
+    const env = makeEnv({ GEMINI_API_KEY: 'gm', MISTRAL_API_KEY: 'm' });
+    const aiRun = vi.fn(async () => ({ response: 'should not run' }));
+    (env.AI as { run: unknown }).run = aiRun;
+    const res = await routeEmbedding(new Request('https://router.test/v1/embeddings', { method: 'POST' }), env as never, {
+      model: 'no-such-embedding-xyz',
+      input: 'hi',
+    });
+    expect(res.status).toBe(404);
+    expect(aiRun).not.toHaveBeenCalled();
+  });
+
   it('serves Workers AI embeddings instead of reporting unsupported', async () => {
     const env = makeEnv({});
     (env.AI as { run: unknown }).run = vi.fn(async () => ({ data: [[0.1, 0.2]], shape: [1, 2] }));
