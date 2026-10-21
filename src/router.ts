@@ -415,7 +415,7 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
         const secs = jittered(30 * Math.min(1 << Math.min(attemptIndex, 2), 4));
         await doCall(stub, {
           op: 'cooldown',
-            dayAnchorUtc: cand.provider.dayAnchorUtc,
+          dayAnchorUtc: cand.provider.dayAnchorUtc,
           bucket: bucket.id,
           seconds: secs,
           note: 'network error',
@@ -486,7 +486,7 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
         // Retry-After is authoritative; don't jitter it (tests rely on exact value)
         await doCall(stub, {
           op: 'cooldown',
-            dayAnchorUtc: cand.provider.dayAnchorUtc,
+          dayAnchorUtc: cand.provider.dayAnchorUtc,
           bucket: bucket.id,
           seconds: secs,
           note: 'upstream 429',
@@ -517,7 +517,7 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
           if (secs > 0) {
             await doCall(stub, {
               op: 'cooldown',
-            dayAnchorUtc: cand.provider.dayAnchorUtc,
+              dayAnchorUtc: cand.provider.dayAnchorUtc,
               bucket: bucket.id,
               seconds: secs,
               note: `upstream ${status}`,
@@ -857,7 +857,7 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
           if (status === 404) {
             await doCall(stub, {
               op: 'cooldownModel',
-            dayAnchorUtc: cand.provider.dayAnchorUtc,
+              dayAnchorUtc: cand.provider.dayAnchorUtc,
               bucket: bucket.id,
               model: cand.model,
               seconds: 300,
@@ -895,7 +895,7 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
       } catch {
         await doCall(stub, {
           op: 'cooldown',
-            dayAnchorUtc: cand.provider.dayAnchorUtc,
+          dayAnchorUtc: cand.provider.dayAnchorUtc,
           bucket: bucket.id,
           seconds: 30,
           note: 'network error',
