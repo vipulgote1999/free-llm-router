@@ -13,6 +13,8 @@ Execution: parallel subagent waves (disjoint files), TDD per task, controller-ru
 | 4 | Live MPX source | 3 | inline | done | ae47c2d | 5/5 |
 | 5 | Router auto ranking + failover + embeddings | 4 | inline | done | b40393e | 24/24 + full 212 |
 | 7b | Packaging + CI | 4 | inline | done | 328e16b | npm ci x64 |
-| 8 | Docs + verification | 5 | inline | done | TBD | 219 passed, dry-run bundle ok |
+| 8 | Docs + verification | 5 | inline | done | f62b4a0 | 219 at commit; branch 224, bundle ok |
 
 Gates: targeted tests per task, then `npm test && npm run typecheck` after each wave.
+
+Final review fixes (self-review, subagents rate-limited): `4874042` stale ranking, `dc6ac6b` raw JSON routing, `480a471` 6h staleness, `9f466a7` auto override edge case. Branch: 224 passed / 28 skipped, typecheck clean, `wrangler deploy --dry-run` ok.
