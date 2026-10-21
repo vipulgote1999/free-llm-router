@@ -5,7 +5,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { routeChat } from '../src/router';
+import { routeChat, routeCompletion, routeEmbedding } from '../src/router';
 
 // ------------------------------------------------------- fake limiter state
 // One isolated state per provider, like the real DO (limiter:<providerId>).
@@ -251,5 +251,93 @@ describe('routeChat end-to-end (mocked DO + upstreams)', () => {
     expect(res.headers.get('x-router-provider')).toBe('cloudflare');
     const j = (await res.json()) as { choices: { message: { content: string } }[] };
     expect(j.choices[0]?.message.content).toBe('cf-answer');
+  });
+
+  it('fails over on 410 ModelDeprecated and cools only that model', async () => {
+    const f = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ type: 'error', error: { type: 'ModelDeprecated', message: 'deprecated' } }), {
+          status: 410,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(upstreamResponse('next provider'));
+    vi.stubGlobal('fetch', f);
+    const env = makeEnv({ GROQ_API_KEY: 'g', CEREBRAS_API_KEY: 'c' });
+    const res = await routeChat(makeRequest('gpt-oss'), env as never, {
+      model: 'gpt-oss',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-router-provider')).toBe('cerebras');
+  });
+
+  it('fails over on a 400 "Model is unavailable" body', async () => {
+    const f = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: 'Model is unavailable.' } }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(upstreamResponse('next provider'));
+    vi.stubGlobal('fetch', f);
+    const env = makeEnv({ GROQ_API_KEY: 'g', CEREBRAS_API_KEY: 'c' });
+    const res = await routeChat(makeRequest('gpt-oss'), env as never, {
+      model: 'gpt-oss',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-router-provider')).toBe('cerebras');
+  });
+
+  it('returns an OpenAI-shaped 404 when every attempt is model_unavailable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch(
+        () =>
+          new Response(JSON.stringify({ error: { message: 'Model is unavailable.' } }), {
+            status: 404,
+            headers: { 'content-type': 'application/json' },
+          }),
+      ),
+    );
+    const env = makeEnv({ GROQ_API_KEY: 'g' });
+    const res = await routeChat(makeRequest('groq/llama-3.3-70b-versatile'), env as never, {
+      model: 'groq/llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(404);
+    const j = (await res.json()) as { error: { code: string; tried: unknown[] } };
+    expect(j.error.code).toBe('model_not_found');
+    expect(j.error.tried.length).toBeGreaterThan(0);
+  });
+
+  it('serves Workers AI embeddings instead of reporting unsupported', async () => {
+    const env = makeEnv({});
+    (env.AI as { run: unknown }).run = vi.fn(async () => ({ data: [[0.1, 0.2]], shape: [1, 2] }));
+    const res = await routeEmbedding(new Request('https://router.test/v1/embeddings', { method: 'POST' }), env as never, {
+      model: 'bge-base',
+      input: 'hi',
+    });
+    expect(res.status).toBe(200);
+    const j = (await res.json()) as { data: { embedding: number[] }[] };
+    expect(j.data[0]!.embedding).toEqual([0.1, 0.2]);
+  });
+
+  it('returns text_completion SSE for legacy completions with stream:true', async () => {
+    vi.stubGlobal('fetch', mockFetch(() => upstreamResponse('hello')));
+    const env = makeEnv({ GROQ_API_KEY: 'g' });
+    const res = await routeCompletion(new Request('https://router.test/v1/completions', { method: 'POST' }), env as never, {
+      model: 'groq/llama-3.3-70b-versatile',
+      prompt: 'hi',
+      stream: true,
+    });
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    const text = await res.text();
+    expect(text).toContain('"object":"text_completion"');
+    expect(text.trim().endsWith('data: [DONE]')).toBe(true);
   });
 });

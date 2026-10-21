@@ -28,6 +28,7 @@ interface CooldownOp {
   bucket: string;
   seconds: number;
   note?: string;
+  dayAnchorUtc?: number;
 }
 interface CooldownModelOp {
   op: 'cooldownModel';
@@ -35,6 +36,7 @@ interface CooldownModelOp {
   model: string;
   seconds: number;
   note?: string;
+  dayAnchorUtc?: number;
 }
 interface StatsOp {
   op: 'stats';
@@ -115,7 +117,7 @@ export class ProviderLimiter extends DurableObject {
     const now = Date.now();
     let b = this.buckets.get(op.bucket);
     if (!b) {
-      b = freshBucket(now, 0);
+      b = freshBucket(now, op.dayAnchorUtc ?? 0);
       this.buckets.set(op.bucket, b);
     }
     b.cooldownUntil = Math.max(b.cooldownUntil, now + op.seconds * 1000);
@@ -129,7 +131,7 @@ export class ProviderLimiter extends DurableObject {
     const now = Date.now();
     let b = this.buckets.get(op.bucket);
     if (!b) {
-      b = freshBucket(now, 0);
+      b = freshBucket(now, op.dayAnchorUtc ?? 0);
       this.buckets.set(op.bucket, b);
     }
     const until = now + op.seconds * 1000;

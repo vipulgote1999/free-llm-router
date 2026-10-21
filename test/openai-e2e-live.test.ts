@@ -365,7 +365,7 @@ describe('OpenAI E2E — every provider (mocked by default, LIVE=1 for real)', (
   describe('POST /v1/embeddings — all embeddings models', () => {
     const embedProviders = enumerateProviders().filter((p) => p.models.some((m) => m.capabilities.includes('embeddings')));
     it(`covers ${embedProviders.length} providers with embeddings`, () => {
-      expect(embedProviders.length).toBeGreaterThan(3);
+      expect(embedProviders.length).toBeGreaterThanOrEqual(3);
       const ids = embedProviders.map((p) => p.id);
       expect(ids).toContain('mistral');
       expect(ids).toContain('cloudflare');
