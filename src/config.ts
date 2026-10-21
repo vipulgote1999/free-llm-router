@@ -276,6 +276,47 @@ const PROVIDERS: ProviderConfig[] = [
     ],
   },
   {
+    // Gateway requires no key for its free pool; a key raises quota. Free
+    // models are the `:free`/`-free`/`/free` ids in the ModelPulseX catalog.
+    id: 'kilocode',
+    name: 'Kilo Code Gateway (free models)',
+    baseUrl: 'https://api.kilo.ai/api/gateway',
+    auth: 'none',
+    apiKeyEnv: 'KILOCODE_API_KEY',
+    keyHeader: 'x-kilocode-api-key',
+    // ModelPulseX caps scheduler concurrency at 10 RPM; ~200 req/hr documented.
+    limits: { rpm: 10, rpd: 200, tpm: MAX, tpd: MAX },
+    dayAnchorUtc: 0,
+    weight: 65,
+    auto: { text: 'kilo-auto/free', vision: 'kilo-auto/free', audio: 'kilo-auto/free' },
+    // Free models are appended from the checked-in ModelPulseX catalog.
+    models: [],
+  },
+  {
+    // Ollama's public cloud (not the self-hosted `ollama` provider). Only the
+    // allowlist below is free; everything else requires a subscription.
+    id: 'ollama_cloud',
+    name: 'Ollama Cloud (free allowlist)',
+    baseUrl: 'https://ollama.com/v1',
+    auth: 'bearer',
+    apiKeyEnv: 'OLLAMA_API_KEY',
+    keyHeader: null,
+    // No published free-tier numbers — conservative, env-overridable.
+    limits: { rpm: 10, rpd: 100, tpm: MAX, tpd: MAX },
+    dayAnchorUtc: 0,
+    weight: 40,
+    auto: { text: 'gemma4:31b', vision: 'gemma4:31b', audio: 'gemma4:31b' },
+    models: [
+      m('gemma4:31b', [], ['text'], 131072),
+      m('minimax-m3', ['ollama-minimax-m3'], ['text'], 128000),
+      m('gpt-oss:20b', [], ['text'], 131072),
+      m('gpt-oss:120b', [], ['text'], 131072),
+      m('nemotron-3-super', [], ['text'], 128000),
+      m('nemotron-3-ultra', [], ['text'], 128000),
+      m('nemotron-3-nano:30b', [], ['text'], 128000),
+    ],
+  },
+  {
     // Same catalog as keyless zen, via the keyed gateway (separate quota).
     id: 'opencode',
     name: 'OpenCode Zen (with key)',

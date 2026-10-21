@@ -95,6 +95,18 @@ const PROVIDERS = {
   sambanova: { envKey: 'SAMBANOVA_API_KEY', url: 'https://api.sambanova.ai/v1/models', auth: 'bearer' },
   nvidia: { envKey: 'NVIDIA_API_KEY', url: 'https://integrate.api.nvidia.com/v1/models', auth: 'bearer' },
   mistral: { envKey: 'MISTRAL_API_KEY', url: 'https://api.mistral.ai/v1/models', auth: 'bearer' },
+  kilocode: {
+    envKey: 'KILOCODE_API_KEY',
+    url: 'https://api.kilo.ai/api/gateway/models',
+    auth: 'bearer',
+    // free variants are the :free / -free / /free ids
+    interesting: (ids) => ids.filter((id) => /(:free|-free|\/free)$/i.test(id)),
+  },
+  ollama_cloud: {
+    envKey: 'OLLAMA_API_KEY',
+    url: 'https://ollama.com/v1/models',
+    auth: 'bearer',
+  },
   opencode: { envKey: 'OPENCODE_API_KEY', url: 'https://opencode.ai/zen/v1/models', auth: 'bearer' },
   ollama: {
     envKey: 'OLLAMA_BASE_URL',

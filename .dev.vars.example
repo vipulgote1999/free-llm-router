@@ -10,9 +10,14 @@ SAMBANOVA_API_KEY=
 NVIDIA_API_KEY=
 MISTRAL_API_KEY=
 
+# Kilo Code Gateway: optional (free models work keyless, a key raises quota)
+KILOCODE_API_KEY=
+
+# Ollama Cloud free allowlist (separate from self-hosted Ollama below)
+OLLAMA_API_KEY=
+
 # Ollama: only needed if you self-host / tunnel your own instance
 # OLLAMA_BASE_URL=https://your-tunnel.example/v1
-# OLLAMA_API_KEY=
 # OLLAMA_MODELS=llama3.2,qwen2.5
 
 # Optional: gate the router itself behind a bearer token

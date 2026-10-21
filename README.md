@@ -1,6 +1,6 @@
 # free-llm-router
 
-An **exact OpenAI-compatible** router that aggregates **12 free LLM providers** behind one Cloudflare Worker — with **LiteLLM-style fallback** and a live dashboard. It tracks every provider's rate limits (RPM/RPD/TPM/TPD + cooldowns) in a Durable Object, **fails over automatically** (429, 5xx, context-window exceeded), and **routes by content** — images → vision, audio → audio, reasoning → reasoning, long context → largest window.
+An **exact OpenAI-compatible** router that aggregates **14 free LLM providers** behind one Cloudflare Worker — with **LiteLLM-style fallback** and a live dashboard. It tracks every provider's rate limits (RPM/RPD/TPM/TPD + cooldowns) in a Durable Object, **fails over automatically** (429, 5xx, context-window exceeded), and **routes by content** — images → vision, audio → audio, reasoning → reasoning, long context → largest window.
 
 Drop-in replacement: change only `base_url` to `https://<your-worker>.workers.dev/v1` and keep your OpenAI SDK code, LiteLLM configs, Vercel AI SDK, or LangChain.
 
@@ -30,11 +30,13 @@ Drop-in replacement: change only `base_url` to `https://<your-worker>.workers.de
 | zen | keyless (IP-limited) | 10 / 100 / — / — | current ModelPulseX FREE set: deepseek-v4.1-flash-free, nemotron-3.5-super-vl-free, glm-5.3-flash-free, minimax-m3.1-flash-free |
 | gemini | `GEMINI_API_KEY` | 10 / 250 / 250K / — (per model) | 2.5-flash, 2.5-pro, flash-lite, 3.5/3.6/3.7-flash, gemma-4 + `gemini-embedding-001` |
 | openrouter | `OPENROUTER_API_KEY` | 20 / 50 / — / — | nemotron-3.5 family, minimax-m3.1, cohere north-mini-code, laguna, `openrouter/free` |
+| kilocode | optional `KILOCODE_API_KEY` | 10 / 200 / — / — | ModelPulseX free set: reflection/beam-free, minimax-m3.1, `openrouter/free`, nemotron-3.5, north-mini-code, kilo-auto |
 | opencode | `OPENCODE_API_KEY` | 20 / 500 / — / — | same catalog as zen (free subset verified by ModelPulseX, plus paid models for explicit requests) |
 | nvidia | `NVIDIA_API_KEY` | 40 / — / — / — | llama-3.3-70b, diffusiongemma-26b, deepseek-v4.1, nemotron-3, llama vision |
 | sambanova | `SAMBANOVA_API_KEY` | 20 / 20 / — / 200K | Meta-Llama-3.3-70B-Instruct |
 | mistral | `MISTRAL_API_KEY` | 60 / — / 500K / — | mistral-small, codestral, ministral-3b/14b + `mistral-embed` |
 | ollama | `OLLAMA_BASE_URL` | 60 / — / — / — | your pulled models + `nomic-embed-text` |
+| ollama_cloud | `OLLAMA_API_KEY` | 10 / 100 / — / — | free allowlist: gemma4:31b, gpt-oss:20b/120b, nemotron-3 super/ultra/nano:30b, minimax-m3 |
 | truerouter | `TRUEROUTER_API_KEY` | 20 / 200 / — / — | llama3.1:8b, qwen2.5-coder:7b |
 
 `*` Workers AI free tier is 10k neurons/day (not requests) — the request count is a conservative proxy; tune with `CLOUDFLARE_RPD`.
@@ -158,7 +160,7 @@ Streaming (`"stream": true`) is passed through as `text/event-stream` with `[DON
 5. **On error** — `429` → cooldown until `Retry-After`/`X-RateLimit-Reset`; `401/403`→10m; `402`→12h; `404`→5m; `408/5xx`→30s with exponential backoff + jitter and then next provider/key is tried. `400 context_length_exceeded` also fails over to the next candidate (large-context fallback).
 6. **Exhausted?** — `503` with OpenAI-shaped `{error:{message,type:"server_error",code:"all_providers_exhausted", tried:[...]}}` listing every attempt, `reason`, `retryAfterSec`, and reset timestamps. Success returns the upstream body untouched with `x-router-provider`/`x-router-model` headers.
 
-Key order per provider: client-supplied key (`x-<provider>-api-key` header, its own quota) → shared env keys. Keyless providers (zen) share one `anonymous` bucket.
+Key order per provider: client-supplied key (`x-<provider>-api-key` header, its own quota) → shared env keys. Keyless providers (zen, kilocode) share one `anonymous` bucket.
 
 ## Multiple keys per provider
 

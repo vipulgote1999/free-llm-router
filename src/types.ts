@@ -85,6 +85,8 @@ export type ProviderId =
   | 'nvidia'
   | 'mistral'
   | 'ollama'
+  | 'ollama_cloud'
+  | 'kilocode'
   | 'cloudflare'
   | 'truerouter';
 

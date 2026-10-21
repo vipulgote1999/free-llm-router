@@ -259,6 +259,50 @@ describe('routeChat end-to-end (mocked DO + upstreams)', () => {
     expect(j.error.tried.every((t) => t.reason === 'empty_response')).toBe(true);
   });
 
+  it('routes kilocode through its gateway with the bearer key', async () => {
+    let seenUrl = '';
+    let seenAuth: unknown = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
+        seenUrl = String(url);
+        seenAuth = (init.headers as Record<string, string> | undefined)?.authorization;
+        return upstreamResponse('kilo ok');
+      }),
+    );
+    const env = makeEnv({ KILOCODE_API_KEY: 'k' });
+    const res = await routeChat(makeRequest('kilocode/reflection/beam-free'), env as never, {
+      model: 'kilocode/reflection/beam-free',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-router-provider')).toBe('kilocode');
+    expect(seenUrl).toBe('https://api.kilo.ai/api/gateway/chat/completions');
+    expect(seenAuth).toBe('Bearer k');
+  });
+
+  it('routes ollama_cloud through ollama.com with the bearer key', async () => {
+    let seenUrl = '';
+    let seenAuth: unknown = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
+        seenUrl = String(url);
+        seenAuth = (init.headers as Record<string, string> | undefined)?.authorization;
+        return upstreamResponse('ollama ok');
+      }),
+    );
+    const env = makeEnv({ OLLAMA_API_KEY: 'o' });
+    const res = await routeChat(makeRequest('ollama_cloud/gpt-oss:20b'), env as never, {
+      model: 'ollama_cloud/gpt-oss:20b',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-router-provider')).toBe('ollama_cloud');
+    expect(seenUrl).toBe('https://ollama.com/v1/chat/completions');
+    expect(seenAuth).toBe('Bearer o');
+  });
+
   it('fails over on 429 and cools the exhausted bucket down', async () => {
     const fetchMockFn = vi.fn().mockImplementation(async (url: string) => {
       if (String(url).includes('api.groq.com')) {
