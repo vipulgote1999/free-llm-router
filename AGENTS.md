@@ -29,6 +29,7 @@ Provider registry (config) → content detection + model selection (detect) → 
 - Never add a provider without limits config + README row.
 
 ## Agent Rules
+- **Atomic commits:** Every project change lands as a small, reversible commit — one logical change per commit, conventional message, tests green. Never bundle unrelated edits.
 - **Workflow Mandate:** You MUST use the bigpowers skills (plan-work, develop-tdd, orchestrate-project) to perform tasks. DO NOT write code directly in response to a user prompt like "build this feature".
 - **Always Green:** Preflight must be green before forward work.
 - Read specs/ before writing code.
