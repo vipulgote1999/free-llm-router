@@ -134,8 +134,8 @@ export function selectCandidates(
         const base = freeOnly
           ? p.models.filter((mm) => isFreeForAuto(p, mm.id))
           : p.models;
-        if (base.length === 0) continue;
-        const model = chooseAutoModel(p, caps, base);
+        if (base.length === 0 && !p.autoOverride) continue;
+        const model = chooseAutoModel(p, caps, base.length > 0 ? base : p.models);
         if (!model) continue;
         const boost = caps.reasoning && hasCapability(p, "reasoning") ? 1000 : 0;
         const effective = p.weight + boost + intelligenceOf(model);
@@ -209,7 +209,7 @@ function chooseAutoModel(
     );
     if (hit && fitsAuto(hit, caps)) return hit.id;
   }
-  return pickAutoModel(caps, basePool);
+  return basePool.length > 0 ? pickAutoModel(caps, basePool) : null;
 }
 
 function pickAutoModel(caps: Caps, basePool: ModelInfo[]): string | null {

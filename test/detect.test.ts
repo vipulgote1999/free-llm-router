@@ -185,6 +185,23 @@ describe("selectCandidates", () => {
     expect(cands.every((c) => isFreeForAuto(c.provider, c.model))).toBe(true);
   });
 
+  it("honors an autoText override on a provider with no free models", () => {
+    const overridden = applyRuntimeOverrides(
+      getProviders({ CEREBRAS_API_KEY: "c" }),
+      { cerebras: { autoText: "gpt-oss-120b" } },
+    );
+    const cands = selectCandidates(
+      parseModelSpec(undefined),
+      detect(req({})),
+      overridden,
+    );
+    expect(
+      cands.some(
+        (c) => c.provider.id === "cerebras" && c.model === "gpt-oss-120b",
+      ),
+    ).toBe(true);
+  });
+
   it("honors an explicit autoText override", () => {
     const overridden = applyRuntimeOverrides(providers(), {
       zen: { autoText: "deepseek-v4.1-flash-free" },
