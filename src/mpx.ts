@@ -206,20 +206,24 @@ interface Rankable {
  * Excluded rows are dropped only when at least one candidate survives; if MPX
  * would empty the chain, the original order is returned.
  */
-export function rankCandidates<T extends Rankable>(candidates: T[], snapshot: MpxSnapshot | undefined, staticScore: (c: T) => number): T[] {
+export function rankCandidates<T extends Rankable>(candidates: T[], snapshot: MpxSnapshot | undefined, staticScore: (c: T) => number, limit = candidates.length): T[] {
   if (candidates.length === 0) return [];
+  const cut = Math.max(0, Math.min(limit, candidates.length));
+  const head = candidates.slice(0, cut);
+  const tail = candidates.slice(cut);
+  if (head.length === 0) return candidates.slice();
 
   const byKey = new Map<string, MpxPerfRow>();
   for (const row of snapshot?.rows ?? []) byKey.set(`${row.provider}:${row.model}`, row);
 
-  const entries = candidates.map((candidate, index) => ({ candidate, index, row: byKey.get(`${candidate.provider.id}:${candidate.model}`) }));
+  const entries = head.map((candidate, index) => ({ candidate, index, row: byKey.get(`${candidate.provider.id}:${candidate.model}`) }));
   const survivors = entries.filter((e) => !e.row || !isExcluded(e.row));
   const pool = survivors.length > 0 ? survivors : entries;
 
   // A stale snapshot still decides free/paid membership, but must not drive
   // ordering: fall back to the caller's static score.
   if (!snapshot || snapshot.stale) {
-    return [...pool].sort((a, b) => staticScore(b.candidate) - staticScore(a.candidate) || a.index - b.index).map((e) => e.candidate);
+    return [...pool].sort((a, b) => staticScore(b.candidate) - staticScore(a.candidate) || a.index - b.index).map((e) => e.candidate).concat(tail);
   }
 
   const known = pool
@@ -229,5 +233,5 @@ export function rankCandidates<T extends Rankable>(candidates: T[], snapshot: Mp
     .filter((e) => !e.row)
     .sort((a, b) => staticScore(b.candidate) - staticScore(a.candidate) || a.index - b.index);
 
-  return [...known, ...unknown].map((e) => e.candidate);
+  return [...known, ...unknown].map((e) => e.candidate).concat(tail);
 }

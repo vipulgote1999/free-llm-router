@@ -191,3 +191,15 @@ describe('stale snapshot handling', () => {
     expect(out[0]!.provider.id).toBe('groq');
   });
 });
+
+describe('explicit fallback tails', () => {
+  it('never reorders or drops an explicit fallback tail', () => {
+    const head = [{ provider: { id: 'zen' }, model: 'deepseek-v4.1-flash-free' }];
+    const tail = [{ provider: { id: 'mistral' }, model: 'retired' }];
+    const snap = parseLeaderboard({
+      leaderboard: [{ provider: 'mistral', model: 'retired', free_status: 'PREVIOUSLY_FREE', status: 'SUCCESS' }],
+    });
+    const out = rankCandidates([...head, ...tail], snap, () => 0, 1);
+    expect(out).toEqual([...head, ...tail]);
+  });
+});

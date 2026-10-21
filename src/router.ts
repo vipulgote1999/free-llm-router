@@ -238,7 +238,7 @@ function buildCandidateChain(
   providers: ProviderConfig[],
   fallbacks: string[],
   endpoint: string,
-): { provider: ProviderConfig; model: string }[] {
+): { candidates: { provider: ProviderConfig; model: string }[]; primaryCount: number } {
   const primarySpec = parseModelSpec(modelStr);
   let primary = selectCandidates(primarySpec, caps as never, providers);
 
@@ -288,7 +288,7 @@ function buildCandidateChain(
   // For now, keep strict: only primary + explicit fallbacks. Auto-healing for forced providers
   // is handled dynamically in the failover loop (on network/5xx) so tests that expect 503
   // for exhausted forced providers still pass, while live network failures still heal.
-  return [...primary, ...extra];
+  return { candidates: [...primary, ...extra], primaryCount: primary.length };
 }
 
 // ----------------------------------------------------------------- main entry (chat)
@@ -330,7 +330,8 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
     caps = { vision: false, audio: false, reasoning, estTotalTokens: est };
   }
 
-  const candidates = buildCandidateChain(modelStr, caps, providers, fallbacks, endpoint);
+  const built = buildCandidateChain(modelStr, caps, providers, fallbacks, endpoint);
+  const candidates = built.candidates;
 
   if (candidates.length === 0) {
     const why = [(caps as { vision?: boolean }).vision ? 'vision input' : null, (caps as { audio?: boolean }).audio ? 'audio input' : null].filter(Boolean).join(', ');
@@ -345,7 +346,7 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
   const isAuto = parseModelSpec(modelStr).model === 'auto';
   if (isAuto) {
     const snapshot = await loadMpxSnapshot(env as { MODELPULSE_URL?: unknown });
-    candidates.splice(0, candidates.length, ...rankCandidates(candidates, snapshot, (c) => c.provider.weight + (getScore(c.model)?.score ?? 0)));
+    candidates.splice(0, candidates.length, ...rankCandidates(candidates, snapshot, (c) => c.provider.weight + (getScore(c.model)?.score ?? 0), built.primaryCount));
   }
 
   const tried: Attempt[] = [];
@@ -748,7 +749,8 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
     reasoning: false,
     estTotalTokens: 512,
   };
-  const candidates = buildCandidateChain(modelStr, caps, providers, [], endpoint);
+  const built = buildCandidateChain(modelStr, caps, providers, [], endpoint);
+  const candidates = built.candidates;
 
   if (candidates.length === 0) {
     const active = providers.filter((p) => !p.disabled);
@@ -759,7 +761,7 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
 
   if (parseModelSpec(modelStr).model === 'auto') {
     const snapshot = await loadMpxSnapshot(env as { MODELPULSE_URL?: unknown });
-    candidates.splice(0, candidates.length, ...rankCandidates(candidates, snapshot, (c) => c.provider.weight + (getScore(c.model)?.score ?? 0)));
+    candidates.splice(0, candidates.length, ...rankCandidates(candidates, snapshot, (c) => c.provider.weight + (getScore(c.model)?.score ?? 0), built.primaryCount));
   }
 
   const tried: Attempt[] = [];
