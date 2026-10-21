@@ -1108,7 +1108,7 @@ async function sanitizeChatContent(res: Response): Promise<Response | null> {
   }
 }
 
-function retryAfterSeconds(res: Response): number {
+export function retryAfterSeconds(res: Response): number {
   const clamp = (s: number) => Math.min(Math.max(s, 1), 86400);
 
   const ra = res.headers.get('retry-after');
@@ -1117,11 +1117,15 @@ function retryAfterSeconds(res: Response): number {
     const t = Date.parse(ra);
     if (!Number.isNaN(t)) return clamp(Math.ceil((t - Date.now()) / 1000));
   }
-  const reset = res.headers.get('x-ratelimit-reset'); // unix seconds (openrouter)
+  const reset = res.headers.get('x-ratelimit-reset'); // epoch seconds (GitHub) or milliseconds (OpenRouter)
   if (reset) {
-    const t = Number(reset) * 1000;
-    if (Number.isFinite(t) && t > Date.now()) {
-      return clamp(Math.ceil((t - Date.now()) / 1000));
+    const n = Number(reset);
+    if (Number.isFinite(n) && n > 0) {
+      // 13-digit values are epoch milliseconds; 10-digit values are epoch seconds.
+      const ms = n >= 1e12 ? n : n * 1000;
+      if (ms > Date.now()) {
+        return clamp(Math.ceil((ms - Date.now()) / 1000));
+      }
     }
   }
   return 60;
