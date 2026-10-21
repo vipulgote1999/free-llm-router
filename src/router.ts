@@ -582,27 +582,32 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
       }
 
       // ---- success (2xx) — strip reasoning leakage (JSON + SSE), else passthrough ----
-      if (endpoint.includes('chat/completions') && body.stream !== true) {
-        // Some upstreams answer 200 with a blank assistant message. Fail over
-        // instead of handing the client an empty completion.
-        if (await isEmptyChatCompletion(res)) {
+      if (endpoint.includes('chat/completions')) {
+        if (body.stream === true) {
+          const sse = wrapSSEBody(res);
+          if (sse) {
+            finish('ok');
+            return passthrough(sse, cand.provider.id, cand.model);
+          }
+          // Non-SSE body on a stream request (e.g. upstream error-as-200):
+          // fall through to the JSON inspection below.
+        }
+        const inspected = await inspectChatContent(res);
+        if (inspected.empty) {
+          // Some upstreams answer 200 with a blank assistant message. Fail
+          // over instead of handing the client an empty completion.
           attempt.reason = 'empty_response';
           finish('error');
           attemptIndex++;
           continue;
         }
+        finish('ok');
+        if (inspected.cleaned) {
+          return passthrough(inspected.cleaned, cand.provider.id, cand.model);
+        }
+        return passthrough(res, cand.provider.id, cand.model);
       }
       finish('ok');
-      if (endpoint.includes('chat/completions')) {
-        if (body.stream === true) {
-          const sse = wrapSSEBody(res);
-          if (sse) return passthrough(sse, cand.provider.id, cand.model);
-          // Non-SSE body on a stream request (e.g. upstream error-as-200):
-          // fall through to the JSON sanitizer below.
-        }
-        const clean = await sanitizeChatContent(res);
-        if (clean) return passthrough(clean, cand.provider.id, cand.model);
-      }
       return passthrough(res, cand.provider.id, cand.model);
     }
   }
@@ -1089,14 +1094,24 @@ function aiText(raw: unknown): string {
   }
 }
 
+interface ChatInspection {
+  /** No usable assistant message (blank content, no tool call/refusal). */
+  empty: boolean;
+  /** Cleaned response when reasoning leakage was stripped; null = use original. */
+  cleaned: Response | null;
+}
+
 /**
- * True when a non-streaming JSON chat response succeeded but produced no
- * usable assistant message. Tool calls, refusals, and responses truncated by
- * `max_tokens` are legitimate and never count as empty.
+ * Inspect a non-streaming JSON chat response once: detect an empty assistant
+ * message and strip reasoning leakage from `message.content`.
+ *
+ * Tool calls, refusals, and responses truncated by `max_tokens` are
+ * legitimate and never count as empty.
  */
-async function isEmptyChatCompletion(res: Response): Promise<boolean> {
+async function inspectChatContent(res: Response): Promise<ChatInspection> {
+  const none: ChatInspection = { empty: false, cleaned: null };
   const ct = res.headers.get('content-type') ?? '';
-  if (!ct.includes('application/json')) return false;
+  if (!ct.includes('application/json')) return none;
   try {
     const j = (await res.clone().json()) as {
       choices?: {
@@ -1111,43 +1126,38 @@ async function isEmptyChatCompletion(res: Response): Promise<boolean> {
     };
     const choice = j?.choices?.[0];
     const msg = choice?.message;
-    if (!msg) return false;
-    if (choice?.finish_reason === 'length') return false;
-    if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) return false;
-    if (msg.function_call != null || msg.refusal != null) return false;
-    if (typeof msg.content === 'string') return msg.content.trim() === '';
-    return msg.content == null;
-  } catch {
-    return false;
-  }
-}
+    if (!msg) return none;
 
-/** If a non-streaming JSON chat response carries reasoning leakage in
- *  message.content, return a cleaned Response; else null (use original). */
-async function sanitizeChatContent(res: Response): Promise<Response | null> {
-  const ct = res.headers.get('content-type') ?? '';
-  if (!ct.includes('application/json')) return null;
-  try {
-    const j = (await res.clone().json()) as {
-      choices?: { message?: { content?: unknown } }[];
-    };
-    const msg = j?.choices?.[0]?.message;
-    if (!msg || typeof msg.content !== 'string') return null;
-    const stripped = stripReasoningTags(msg.content);
-    if (stripped === msg.content) return null;
-    msg.content = stripped;
-    const headers = new Headers(res.headers);
-    // The body is re-serialized, so upstream entity/length headers are stale.
-    headers.delete('content-length');
-    headers.delete('content-encoding');
-    headers.delete('transfer-encoding');
-    headers.delete('connection');
-    return new Response(JSON.stringify(j), {
-      status: res.status,
-      headers,
-    });
+    const hasToolCalls = Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
+    const legitimate =
+      hasToolCalls ||
+      msg.function_call != null ||
+      msg.refusal != null ||
+      choice?.finish_reason === 'length';
+    const empty =
+      !legitimate &&
+      (typeof msg.content === 'string' ? msg.content.trim() === '' : msg.content == null);
+    if (empty) return { empty: true, cleaned: null };
+
+    if (typeof msg.content === 'string') {
+      const stripped = stripReasoningTags(msg.content);
+      if (stripped !== msg.content) {
+        msg.content = stripped;
+        const headers = new Headers(res.headers);
+        // The body is re-serialized, so upstream entity/length headers are stale.
+        headers.delete('content-length');
+        headers.delete('content-encoding');
+        headers.delete('transfer-encoding');
+        headers.delete('connection');
+        return {
+          empty: false,
+          cleaned: new Response(JSON.stringify(j), { status: res.status, headers }),
+        };
+      }
+    }
+    return none;
   } catch {
-    return null;
+    return none;
   }
 }
 

@@ -198,6 +198,33 @@ describe('routeChat end-to-end (mocked DO + upstreams)', () => {
     expect(res.headers.get('x-router-provider')).toBe('groq');
   });
 
+  it('keeps refusal responses whose content is null', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch(
+        () =>
+          new Response(
+            JSON.stringify({
+              choices: [
+                {
+                  message: { role: 'assistant', content: null, refusal: 'I cannot help with that.' },
+                  finish_reason: 'stop',
+                },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+      ),
+    );
+    const env = makeEnv({ GROQ_API_KEY: 'g' });
+    const res = await routeChat(makeRequest('groq/llama-3.3-70b-versatile'), env as never, {
+      model: 'groq/llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-router-provider')).toBe('groq');
+  });
+
   it('keeps empty content truncated by max_tokens', async () => {
     vi.stubGlobal(
       'fetch',
