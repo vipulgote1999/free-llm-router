@@ -17,4 +17,4 @@ Execution: parallel subagent waves (disjoint files), TDD per task, controller-ru
 
 Gates: targeted tests per task, then `npm test && npm run typecheck` after each wave.
 
-Final review fixes (self-review, subagents rate-limited): `4874042` stale ranking, `dc6ac6b` raw JSON routing, `480a471` 6h staleness, `9f466a7` auto override edge case, `87634dd` fallback-tail ordering. Branch: 225 passed / 28 skipped, typecheck clean, `wrangler deploy --dry-run` ok.
+Final review fixes (self-review, subagents rate-limited): `4874042` stale ranking, `dc6ac6b` raw JSON routing, `480a471` 6h staleness, `9f466a7` auto override edge case, `87634dd` fallback-tail ordering, `608b6c4` invalid_model classification, `a42ddbb` Workers AI passthrough. Main: 227 passed / 28 skipped, typecheck clean, `wrangler deploy --dry-run` ok. Deployed version `43515a81`; live auto/embeddings/404/SSE smoke green.
