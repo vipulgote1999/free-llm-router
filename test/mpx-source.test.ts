@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { clearMpxCache, loadMpxSnapshot } from '../src/mpx-source';
+import { bakedSnapshot, clearMpxCache, loadMpxSnapshot } from '../src/mpx-source';
 
 const payload = {
   leaderboard: [
@@ -54,5 +54,14 @@ describe('loadMpxSnapshot', () => {
   it('returns the baked snapshot for an empty live payload', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ leaderboard: [] }), { status: 200 })));
     expect((await loadMpxSnapshot()).source).toBe('snapshot');
+  });
+});
+
+describe('bakedSnapshot', () => {
+  it('marks an old checked-in snapshot stale for ranking', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-12-01T00:00:00.000Z'));
+    expect(bakedSnapshot().stale).toBe(true);
+    vi.useRealTimers();
   });
 });

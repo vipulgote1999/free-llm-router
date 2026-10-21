@@ -156,7 +156,8 @@ describe('rankCandidates', () => {
   ];
 
   it('sorts by perf and drops non-free rows when a survivor exists', () => {
-    const out = rankCandidates(cands, parseLeaderboard(leaderboard), () => 0);
+    const fresh = parseLeaderboard({ ...leaderboard, meta: { ...leaderboard.meta, is_stale: false } });
+    const out = rankCandidates(cands, fresh, () => 0);
     expect(out.map((c) => c.provider.id)).toEqual(['openrouter', 'zen', 'groq']);
   });
 
@@ -174,6 +175,19 @@ describe('rankCandidates', () => {
 
   it('falls back to static score when the snapshot is missing', () => {
     const out = rankCandidates(cands, undefined, (c) => (c.provider.id === 'groq' ? 10 : 1));
+    expect(out[0]!.provider.id).toBe('groq');
+  });
+});
+
+describe('stale snapshot handling', () => {
+  it('ignores performance ordering for a stale snapshot but still drops non-free rows', () => {
+    const cands = [
+      { provider: { id: 'zen' }, model: 'deepseek-v4.1-flash-free' },
+      { provider: { id: 'openrouter' }, model: 'minimax/minimax-m3.1-flash:free' },
+      { provider: { id: 'groq' }, model: 'openai/gpt-oss-20b' },
+    ];
+    const snap = parseLeaderboard(leaderboard); // meta.is_stale = true
+    const out = rankCandidates(cands, snap, (c) => (c.provider.id === 'groq' ? 10 : 1));
     expect(out[0]!.provider.id).toBe('groq');
   });
 });

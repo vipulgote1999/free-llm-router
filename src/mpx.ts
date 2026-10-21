@@ -216,6 +216,12 @@ export function rankCandidates<T extends Rankable>(candidates: T[], snapshot: Mp
   const survivors = entries.filter((e) => !e.row || !isExcluded(e.row));
   const pool = survivors.length > 0 ? survivors : entries;
 
+  // A stale snapshot still decides free/paid membership, but must not drive
+  // ordering: fall back to the caller's static score.
+  if (!snapshot || snapshot.stale) {
+    return [...pool].sort((a, b) => staticScore(b.candidate) - staticScore(a.candidate) || a.index - b.index).map((e) => e.candidate);
+  }
+
   const known = pool
     .filter((e) => e.row)
     .sort((a, b) => performanceScore(b.row!) - performanceScore(a.row!) || staticScore(b.candidate) - staticScore(a.candidate) || a.index - b.index);

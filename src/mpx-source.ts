@@ -28,7 +28,7 @@ export function bakedSnapshot(): MpxSnapshot {
     fetchedAt: Number.isFinite(fetchedAt) ? fetchedAt : 0,
     source: 'snapshot',
     lastBenchmark: null,
-    stale: false,
+    stale: !Number.isFinite(fetchedAt) || Date.now() - fetchedAt > MAX_STALE_MS,
   };
 }
 
