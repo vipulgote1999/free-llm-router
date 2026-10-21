@@ -68,7 +68,7 @@ describe('compat matrix — provider registry', () => {
 
   it('embeds matrix: every embeddings model has embeddings capability and sane context', () => {
     const embedModels = providers.flatMap((p) => p.models.filter((m) => m.capabilities.includes('embeddings')).map((m) => ({ provider: p.id, id: m.id, cap: m.capabilities, ctx: m.context })));
-    expect(embedModels.length).toBeGreaterThanOrEqual(6); // cloudflare 2 + zen 1 + gemini 1 + openrouter 1 + nvidia 1 + mistral 1 + opencode 1
+    expect(embedModels.length).toBeGreaterThanOrEqual(4); // cloudflare 2 + gemini 1 + mistral 1
     for (const m of embedModels) {
       expect(m.cap).toContain('embeddings');
       expect(m.ctx).toBeGreaterThan(0);
@@ -78,6 +78,11 @@ describe('compat matrix — provider registry', () => {
     expect(byProvider.get('mistral')).toBeGreaterThan(0);
     expect(byProvider.get('cloudflare')).toBeGreaterThan(0);
     expect(byProvider.get('gemini')).toBeGreaterThan(0);
+    // Dead free-tier embeddings were removed (live 404/410 on 2026-10-21).
+    expect(byProvider.has('zen')).toBe(false);
+    expect(byProvider.has('opencode')).toBe(false);
+    expect(byProvider.has('openrouter')).toBe(false);
+    expect(byProvider.has('nvidia')).toBe(false);
   });
 
   it('vision/audio/reasoning capability routing is correct', () => {

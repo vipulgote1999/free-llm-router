@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { detect, parseModelSpec, selectCandidates } from "../src/detect";
-import { getProviders } from "../src/config";
+import { applyRuntimeOverrides, getProviders, isFreeForAuto } from "../src/config";
 import type { ChatRequest } from "../src/types";
 
 const env = {
@@ -129,21 +129,24 @@ describe("parseModelSpec", () => {
 });
 
 describe("selectCandidates", () => {
-  it("auto text picks highest intelligence blended with weight (opencode high-intel first)", () => {
+  it("auto text picks only verified-free models", () => {
     const cands = selectCandidates(
       parseModelSpec(undefined),
       detect(req({})),
       providers(),
     );
     expect(cands.length).toBeGreaterThan(0);
-    // Intelligence-aware: opencode claude-opus-5 (63) weight 125 → effective 188 beats zen muse-spark (57) 130→187
-    expect(cands[0]?.provider.id).toBe("opencode");
-    expect(cands[0]?.model).toBe("claude-opus-5");
-    expect(cands[1]?.provider.id).toBe("zen");
-    expect(cands[1]?.model).toBe("muse-spark-1.2-contributor-free");
+    expect(cands.every((c) => isFreeForAuto(c.provider, c.model))).toBe(true);
+    expect(
+      cands.some(
+        (c) =>
+          c.model === "claude-opus-5" ||
+          c.model === "muse-spark-1.2-contributor-free",
+      ),
+    ).toBe(false);
   });
 
-  it("auto vision only returns vision-capable providers", () => {
+  it("auto vision only returns verified-free vision models", () => {
     const caps = detect(
       req({
         messages: [
@@ -159,6 +162,7 @@ describe("selectCandidates", () => {
       caps,
       providers(),
     );
+    expect(cands.length).toBeGreaterThan(0);
     expect(
       cands.every((c) =>
         c.provider.models
@@ -166,12 +170,11 @@ describe("selectCandidates", () => {
           ?.capabilities.includes("vision"),
       ),
     ).toBe(true);
-    expect(cands.some((c) => c.provider.id === "gemini")).toBe(true);
+    expect(cands.every((c) => isFreeForAuto(c.provider, c.model))).toBe(true);
     expect(cands.some((c) => c.provider.id === "groq")).toBe(false); // no vision model
-    expect(cands.some((c) => c.provider.id === "nvidia")).toBe(true); // nemotron-vl
   });
 
-  it("auto reasoning prefers reasoning models", () => {
+  it("auto reasoning prefers a verified-free reasoning model", () => {
     const cands = selectCandidates(
       parseModelSpec(undefined),
       detect(req({ model: "auto", reasoning_effort: "high" })),
@@ -179,10 +182,48 @@ describe("selectCandidates", () => {
     );
     const cf = cands.find((c) => c.provider.id === "cloudflare");
     expect(cf?.model).toBe("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b");
-    const or = cands.find((c) => c.provider.id === "openrouter");
-    expect(or?.model).toBe(
-      "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    expect(cands.every((c) => isFreeForAuto(c.provider, c.model))).toBe(true);
+  });
+
+  it("honors an autoText override on a provider with no free models", () => {
+    const overridden = applyRuntimeOverrides(
+      getProviders({ CEREBRAS_API_KEY: "c" }),
+      { cerebras: { autoText: "gpt-oss-120b" } },
     );
+    const cands = selectCandidates(
+      parseModelSpec(undefined),
+      detect(req({})),
+      overridden,
+    );
+    expect(
+      cands.some(
+        (c) => c.provider.id === "cerebras" && c.model === "gpt-oss-120b",
+      ),
+    ).toBe(true);
+  });
+
+  it("honors an explicit autoText override", () => {
+    const overridden = applyRuntimeOverrides(providers(), {
+      zen: { autoText: "deepseek-v4.1-flash-free" },
+    });
+    const cands = selectCandidates(
+      parseModelSpec(undefined),
+      detect(req({})),
+      overridden,
+    );
+    expect(cands[0]?.provider.id).toBe("zen");
+    expect(cands[0]?.model).toBe("deepseek-v4.1-flash-free");
+  });
+
+  it("keeps explicitly requested previously-free models", () => {
+    const cands = selectCandidates(
+      parseModelSpec("muse-spark-1.2-contributor-free"),
+      detect(req({ model: "muse-spark-1.2-contributor-free" })),
+      providers(),
+    );
+    expect(
+      cands.some((c) => c.model === "muse-spark-1.2-contributor-free"),
+    ).toBe(true);
   });
 
   it("resolves aliases across providers, weight-ordered", () => {

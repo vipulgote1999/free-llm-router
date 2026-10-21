@@ -4,9 +4,9 @@
  * Pure logic — no Cloudflare imports.
  */
 
-import type { ChatPart, ChatRequest, Capability } from "./types";
+import type { ChatPart, ChatRequest, Capability, ModelInfo } from "./types";
 import type { ProviderConfig } from "./types";
-import { PROVIDER_IDS, isKnownModelId } from "./config";
+import { PROVIDER_IDS, isKnownModelId, isFreeForAuto } from "./config";
 import { getScore } from "./model-scores";
 
 export interface Caps {
@@ -122,37 +122,34 @@ export function selectCandidates(
     ? active.filter((p) => p.id === spec.provider)
     : active;
 
-  // auto: intelligence-aware routing — prefer high Artificial Analysis scores
-  // Blended priority: weight (+ reasoning boost) + intelligence score.
-  // Only affects "auto"; explicit aliases/models keep weight-ordered failover
-  // so client intent and fallback order are preserved.
+  // auto: prefer verified-free models, then order by weight + AA intelligence.
+  // If no free model matches the requested capability (e.g. no free audio
+  // model), fall back to the full registry so the router still serves.
   if (spec.model === "auto") {
-    const out: (Candidate & { effective: number })[] = [];
-    for (const p of pool) {
-      if (caps.vision && !hasCapability(p, "vision")) continue;
-      if (caps.audio && !hasCapability(p, "audio")) continue;
-      const model = chooseModel(p, spec.model, caps);
-      if (!model) continue;
-      const boost = caps.reasoning && hasCapability(p, "reasoning") ? 1000 : 0;
-      const effective = p.weight + boost + intelligenceOf(model);
-      out.push({ provider: p, model, effective });
-    }
+    const build = (freeOnly: boolean): (Candidate & { effective: number })[] => {
+      const out: (Candidate & { effective: number })[] = [];
+      for (const p of pool) {
+        if (caps.vision && !hasCapability(p, "vision")) continue;
+        if (caps.audio && !hasCapability(p, "audio")) continue;
+        const base = freeOnly
+          ? p.models.filter((mm) => isFreeForAuto(p, mm.id))
+          : p.models;
+        if (base.length === 0 && !p.autoOverride) continue;
+        const model = chooseAutoModel(p, caps, base.length > 0 ? base : p.models);
+        if (!model) continue;
+        const boost = caps.reasoning && hasCapability(p, "reasoning") ? 1000 : 0;
+        const effective = p.weight + boost + intelligenceOf(model);
+        out.push({ provider: p, model, effective });
+      }
+      return out;
+    };
+    let out = build(true);
+    if (out.length === 0) out = build(false);
     out.sort((a, b) => b.effective - a.effective);
     return out.map(({ provider, model }) => ({ provider, model }));
   }
 
-  const sorted = [...pool].sort((a, b) => {
-    // auto + reasoning: providers with reasoning models jump the queue
-    const aBoost =
-      spec.model === "auto" && caps.reasoning && hasCapability(a, "reasoning")
-        ? 1000
-        : 0;
-    const bBoost =
-      spec.model === "auto" && caps.reasoning && hasCapability(b, "reasoning")
-        ? 1000
-        : 0;
-    return b.weight + bBoost - (a.weight + aBoost);
-  });
+  const sorted = [...pool].sort((a, b) => b.weight - a.weight);
 
   // NOTE (bench-2026-08-17): spreading auto requests across providers was
   // measured and REVERTED — free tiers are concurrency-limited (mistral
@@ -189,8 +186,34 @@ function chooseModel(
     return found.id;
   }
 
-  // auto: content decides
-  let pool = p.models;
+  return chooseAutoModel(p, caps, p.models);
+}
+
+function fitsAuto(mm: ModelInfo, caps: Caps): boolean {
+  if (caps.audio) return mm.capabilities.includes("audio");
+  if (caps.vision) return mm.capabilities.includes("vision");
+  return !mm.capabilities.includes("audio");
+}
+
+/** Explicit admin auto.* overrides win; otherwise content decides from the pool. */
+function chooseAutoModel(
+  p: ProviderConfig,
+  caps: Caps,
+  basePool: ModelInfo[],
+): string | null {
+  const cap = caps.audio ? "audio" : caps.vision ? "vision" : "text";
+  if (p.autoOverride?.[cap]) {
+    const wanted = p.auto[cap];
+    const hit = p.models.find(
+      (mm) => mm.id === wanted || mm.aliases.includes(wanted),
+    );
+    if (hit && fitsAuto(hit, caps)) return hit.id;
+  }
+  return basePool.length > 0 ? pickAutoModel(caps, basePool) : null;
+}
+
+function pickAutoModel(caps: Caps, basePool: ModelInfo[]): string | null {
+  let pool = basePool;
   if (caps.audio) {
     pool = pool.filter((mm) => mm.capabilities.includes("audio"));
   } else if (caps.vision) {
@@ -205,7 +228,6 @@ function chooseModel(
       mm.capabilities.includes("reasoning"),
     );
     if (reasoningPool.length > 0) {
-      // ponytail: pick highest-intelligence reasoning model; stable for equal scores
       const sorted = [...reasoningPool].sort(
         (a, b) => intelligenceOf(b.id) - intelligenceOf(a.id),
       );
@@ -224,11 +246,8 @@ function chooseModel(
       return sorted[0]!.id;
     }
   }
-  // default auto: highest intelligence in the capability-filtered pool
-  {
-    const sorted = [...pool].sort(
-      (a, b) => intelligenceOf(b.id) - intelligenceOf(a.id),
-    );
-    return sorted[0]?.id ?? null;
-  }
+  const sorted = [...pool].sort(
+    (a, b) => intelligenceOf(b.id) - intelligenceOf(a.id),
+  );
+  return sorted[0]?.id ?? null;
 }

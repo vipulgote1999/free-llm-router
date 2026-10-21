@@ -5,8 +5,10 @@
  * Verify this against live provider catalogs with: node scripts/verify-models.mjs
  */
 
-import type { Limits, ModelInfo, ProviderConfig } from './types';
+import type { Capability, Limits, ModelInfo, ProviderConfig } from './types';
 import { UNLIMITED } from './windows';
+import { MPX_CATALOG } from './mpx-catalog.generated';
+import { normalizeModelId } from './mpx';
 import {
   isFreeZenModel,
   modelInfosForFreeIds,
@@ -150,7 +152,6 @@ const PROVIDERS: ProviderConfig[] = [
       m('nemotron-3-ultra-free', ['nemotron-free', 'nemotron-ultra'], ['text'], 1000000),
       m('nemotron-3.5-lightning-free', ['nemotron-lightning-free', 'nemotron-lightning'], ['text'], 1000000),
       m('laguna-s-2.1-free', ['laguna-free', 'laguna'], ['text'], 262144),
-      m('openai/text-embedding-3-small', ['text-embedding-3-small', 'embed-small'], ['embeddings'], 8191),
     ],
   },
   {
@@ -271,7 +272,6 @@ const PROVIDERS: ProviderConfig[] = [
       m('liquid/lfm-2.5-2.6b:free', ['lfm'], ['text'], 128000),
       m('nvidia/nemotron-nano-12b-v2-vl:free', ['nemotron-vl'], ['vision'], 128000),
       m('nvidia/nemotron-nano-9b-v2:free', ['nemotron-nano-9b'], ['text'], 128000),
-      m('openai/text-embedding-3-small:free', ['text-embedding-3-small', 'text-embedding'], ['embeddings'], 8191),
       m('z-ai/glm-5.2:free', ['glm-5.2', 'glm-free'], ['text'], 131072),
     ],
   },
@@ -357,7 +357,6 @@ const PROVIDERS: ProviderConfig[] = [
       m('kimi-k2.5', [], ['text'], 131072),
       m('qwen3.6-plus', ['qwen-plus'], ['reasoning'], 131072),
       m('qwen3.5-plus', [], ['text'], 131072),
-      m('openai/text-embedding-3-small', ['text-embedding-3-small', 'embed-small'], ['embeddings'], 8191),
     ],
   },
   {
@@ -388,7 +387,6 @@ const PROVIDERS: ProviderConfig[] = [
       m('minimaxai/minimax-m3', ['minimax'], ['text'], 131072),
       m('meta/muse-glimmer-30b', ['muse'], ['text'], 131072),
       m('meta/llama-3.2-90b-vision-instruct', ['llama-vision-90b'], ['vision'], 131072),
-      m('nvidia/nv-embedqa-e5-v5', ['nv-embedqa', 'nvidia-embed'], ['embeddings'], 8192),
     ],
   },
   {
@@ -542,6 +540,96 @@ export function getModelLimits(
   return { ...p.limits, ...(model?.limits ?? {}), ...(p.envLimits ?? {}) };
 }
 
+// ------------------------------------------------------------- ModelPulseX catalog
+
+const VALID_CAPABILITIES = new Set<Capability>(['text', 'vision', 'audio', 'reasoning', 'embeddings']);
+
+function sanitizeCapabilities(caps: string[]): Capability[] {
+  const out = caps.filter((c): c is Capability => VALID_CAPABILITIES.has(c as Capability));
+  return out.length > 0 ? out : ['text'];
+}
+
+/** Derived aliases for a model we only know through ModelPulseX discovery. */
+function derivedAliases(id: string): string[] {
+  const base = id.replace(/:free$/, '').replace(/-free$/, '');
+  return base && base !== id ? [base] : [];
+}
+
+const MPX_BY_PROVIDER = new Map<string, typeof MPX_CATALOG>();
+for (const row of MPX_CATALOG) {
+  const list = MPX_BY_PROVIDER.get(row.provider) ?? [];
+  list.push(row);
+  MPX_BY_PROVIDER.set(row.provider, list);
+}
+// OpenCode's keyed gateway exposes the same catalog as keyless Zen.
+const ZEN_ROWS = MPX_BY_PROVIDER.get('zen');
+if (ZEN_ROWS && ZEN_ROWS.length > 0 && !MPX_BY_PROVIDER.has('opencode')) {
+  MPX_BY_PROVIDER.set('opencode', ZEN_ROWS);
+}
+
+function findMpxRow(rows: typeof MPX_CATALOG, modelId: string) {
+  const id = normalizeModelId(modelId);
+  return rows.find((r) => normalizeModelId(r.id) === id);
+}
+
+/**
+ * Merge the checked-in ModelPulseX catalog into a provider's models.
+ * - FREE + active models missing from the registry are appended.
+ * - PREVIOUSLY_FREE models already in the registry are marked `free: false`.
+ * - Explicit models are never removed.
+ */
+function mergeMpxModels(providerId: string, models: ModelInfo[]): ModelInfo[] {
+  const rows = MPX_BY_PROVIDER.get(providerId);
+  if (!rows || rows.length === 0) return models;
+
+  const byId = new Map(models.map((m) => [m.id, m]));
+  for (const row of rows) {
+    const id = normalizeModelId(row.id);
+    const existing = byId.get(id);
+    if (row.freeStatus === 'PREVIOUSLY_FREE') {
+      if (existing) byId.set(id, { ...existing, free: false });
+      continue;
+    }
+    if (row.freeStatus !== 'FREE' || !row.active) continue;
+    if (existing) {
+      byId.set(id, { ...existing, free: true, context: existing.context || row.context });
+      continue;
+    }
+    byId.set(id, {
+      id,
+      aliases: derivedAliases(id),
+      capabilities: sanitizeCapabilities(row.capabilities),
+      context: row.context || 131_072,
+      free: true,
+    });
+  }
+  return [...byId.values()];
+}
+
+function staticFree(providerId: string, modelId: string): boolean {
+  if (providerId === 'zen' || providerId === 'opencode') return isFreeZenModel(modelId);
+  if (providerId === 'openrouter') return modelId.endsWith(':free') || modelId === 'openrouter/free';
+  return true;
+}
+
+/**
+ * True when `auto` may route to this model. ModelPulseX is authoritative for
+ * providers it covers; unlisted models there are not verified free. Providers
+ * with no MPX data keep the static free-tier heuristic.
+ */
+export function isFreeForAuto(p: ProviderConfig, modelId: string): boolean {
+  const model = p.models.find((m) => m.id === modelId || m.aliases.includes(modelId));
+  if (!model) return false;
+  if (model.free === false) return false;
+
+  const rows = MPX_BY_PROVIDER.get(p.id);
+  if (rows && rows.length > 0) {
+    const row = findMpxRow(rows, model.id);
+    return row ? row.freeStatus === 'FREE' && row.active : false;
+  }
+  return staticFree(p.id, model.id);
+}
+
 function resolveProvider(
   p: ProviderConfig,
   env: Record<string, unknown>,
@@ -561,10 +649,12 @@ function resolveProvider(
 
   // Ollama models are whatever the user has pulled; env can override the list.
   let models = p.models;
+  let customOllamaModels = false;
   if (p.id === 'ollama') {
     const names = parseKeys(asStr(env.OLLAMA_MODELS));
     if (names.length > 0) {
       models = names.map((n) => m(n, [], ['text'], 131072));
+      customOllamaModels = true;
     }
   }
 
@@ -599,6 +689,10 @@ function resolveProvider(
   }
 
   const keys = parseKeys(asStr(env[p.apiKeyEnv]));
+
+  // Checked-in ModelPulseX catalog: add verified-free models, mark retired ones.
+  // An explicit OLLAMA_MODELS list describes the operator's own host, so leave it alone.
+  if (!customOllamaModels) models = mergeMpxModels(p.id, models);
 
   // OpenCode with key gets first priority over keyless zen — separate quota
   let weight = p.weight;
@@ -712,6 +806,11 @@ export function applyRuntimeOverrides(
     if (o.autoVision) auto.vision = o.autoVision;
     if (o.autoAudio) auto.audio = o.autoAudio;
     next.auto = auto;
+    const autoOverride = { ...(p.autoOverride ?? {}) };
+    if (o.autoText) autoOverride.text = true;
+    if (o.autoVision) autoOverride.vision = true;
+    if (o.autoAudio) autoOverride.audio = true;
+    if (Object.keys(autoOverride).length > 0) next.autoOverride = autoOverride;
     if (o.limits) {
       next.limits = { ...p.limits, ...o.limits };
       next.envLimits = { ...(p.envLimits ?? {}), ...o.limits };

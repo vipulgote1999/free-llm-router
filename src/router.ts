@@ -14,6 +14,9 @@ import { wrapSSEBody } from './stream-sanitize';
 import { bucketsFor, getModelLimits } from './config';
 import { getEffectiveProviders } from './runtime';
 import { jsonErr } from './http';
+import { loadMpxSnapshot } from './mpx-source';
+import { rankCandidates } from './mpx';
+import { getScore } from './model-scores';
 import type { AcquireResult, ChatRequest, GenericRequest } from './types';
 import type { ProviderConfig } from './types';
 
@@ -132,6 +135,36 @@ async function isContextLengthError(res: Response): Promise<boolean> {
   return false;
 }
 
+function isModelUnavailableMessage(message: string): boolean {
+  return /model.*(unavailable|not found|does not exist|deprecated|invalid model)|deprecated model/i.test(message);
+}
+
+/**
+ * Upstreams signal a dead model in several shapes: 410 (retired), 404, and
+ * 400 bodies such as `{"error":{"message":"Model is unavailable."}}`.
+ * These must fail over and cool only the model, never reach the client.
+ */
+async function isModelUnavailableResponse(res: Response): Promise<boolean> {
+  if (res.status === 410) return true;
+  if (res.status !== 400 && res.status !== 404) return false;
+
+  const ct = res.headers.get('content-type') ?? '';
+  if (ct.includes('application/json')) {
+    try {
+      const j = (await res.clone().json()) as {
+        error?: { message?: string; code?: string; type?: string };
+        message?: string;
+        detail?: string;
+      };
+      const text = [j?.error?.message, j?.error?.code, j?.error?.type, j?.message, j?.detail].filter(Boolean).join(' ');
+      if (text && isModelUnavailableMessage(text)) return true;
+    } catch {
+      // fall through to the status-based default
+    }
+  }
+  return res.status === 404;
+}
+
 function parseFallbackModels(body: GenericRequest): string[] {
   const raw = body.fallbacks ?? (body as Record<string, unknown>).fallbacks ?? (body as Record<string, unknown>).fallback;
   if (!raw) return [];
@@ -205,9 +238,19 @@ function buildCandidateChain(
   providers: ProviderConfig[],
   fallbacks: string[],
   endpoint: string,
-): { provider: ProviderConfig; model: string }[] {
+): { candidates: { provider: ProviderConfig; model: string }[]; primaryCount: number } {
   const primarySpec = parseModelSpec(modelStr);
   let primary = selectCandidates(primarySpec, caps as never, providers);
+
+  // Embeddings don't use the chat auto pool: pick only embedding-capable models.
+  if (primarySpec.model === 'auto' && endpoint.includes('embeddings')) {
+    primary = [];
+    for (const p of [...providers].filter((x) => !x.disabled).sort((a, b) => b.weight - a.weight)) {
+      for (const mm of p.models) {
+        if (mm.capabilities.includes('embeddings')) primary.push({ provider: p, model: mm.id });
+      }
+    }
+  }
 
   // If no primary candidates and model was not 'auto', allow generic passthrough:
   // try every active provider weight-ordered with the exact requested model.
@@ -245,7 +288,7 @@ function buildCandidateChain(
   // For now, keep strict: only primary + explicit fallbacks. Auto-healing for forced providers
   // is handled dynamically in the failover loop (on network/5xx) so tests that expect 503
   // for exhausted forced providers still pass, while live network failures still heal.
-  return [...primary, ...extra];
+  return { candidates: [...primary, ...extra], primaryCount: primary.length };
 }
 
 // ----------------------------------------------------------------- main entry (chat)
@@ -287,7 +330,8 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
     caps = { vision: false, audio: false, reasoning, estTotalTokens: est };
   }
 
-  const candidates = buildCandidateChain(modelStr, caps, providers, fallbacks, endpoint);
+  const built = buildCandidateChain(modelStr, caps, providers, fallbacks, endpoint);
+  const candidates = built.candidates;
 
   if (candidates.length === 0) {
     const why = [(caps as { vision?: boolean }).vision ? 'vision input' : null, (caps as { audio?: boolean }).audio ? 'audio input' : null].filter(Boolean).join(', ');
@@ -297,6 +341,12 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
       { configured: providers.map((p) => p.id) },
       { code: 'model_not_found' },
     );
+  }
+
+  const isAuto = parseModelSpec(modelStr).model === 'auto';
+  if (isAuto) {
+    const snapshot = await loadMpxSnapshot(env as { MODELPULSE_URL?: unknown });
+    candidates.splice(0, candidates.length, ...rankCandidates(candidates, snapshot, (c) => c.provider.weight + (getScore(c.model)?.score ?? 0), built.primaryCount));
   }
 
   const tried: Attempt[] = [];
@@ -366,6 +416,7 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
         const secs = jittered(30 * Math.min(1 << Math.min(attemptIndex, 2), 4));
         await doCall(stub, {
           op: 'cooldown',
+          dayAnchorUtc: cand.provider.dayAnchorUtc,
           bucket: bucket.id,
           seconds: secs,
           note: 'network error',
@@ -383,6 +434,7 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
         if (noc)
           await doCall(stub, {
             op: 'cooldown',
+            dayAnchorUtc: cand.provider.dayAnchorUtc,
             bucket: bucket.id,
             seconds: noc,
             note: upstream.reason,
@@ -402,6 +454,7 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
         if (isContextExceeded) {
           await doCall(stub, {
             op: 'cooldown',
+            dayAnchorUtc: cand.provider.dayAnchorUtc,
             bucket: bucket.id,
             seconds: 30,
             note: 'context exceeded',
@@ -413,11 +466,28 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
         }
       }
 
+      // A retired/dead model must fail over, not reach the client (410/404/400-body).
+      if (await isModelUnavailableResponse(res)) {
+        await doCall(stub, {
+          op: 'cooldownModel',
+          bucket: bucket.id,
+          model: cand.model,
+          seconds: 300,
+          note: `model unavailable upstream (${cand.model})`,
+          dayAnchorUtc: cand.provider.dayAnchorUtc,
+        });
+        attempt.reason = 'model_unavailable';
+        finish('skipped');
+        attemptIndex++;
+        continue;
+      }
+
       if (status === 429) {
         const secs = retryAfterSeconds(res);
         // Retry-After is authoritative; don't jitter it (tests rely on exact value)
         await doCall(stub, {
           op: 'cooldown',
+          dayAnchorUtc: cand.provider.dayAnchorUtc,
           bucket: bucket.id,
           seconds: secs,
           note: 'upstream 429',
@@ -434,6 +504,7 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
         if (status === 404) {
           await doCall(stub, {
             op: 'cooldownModel',
+            dayAnchorUtc: cand.provider.dayAnchorUtc,
             bucket: bucket.id,
             model: cand.model,
             seconds: 300,
@@ -447,6 +518,7 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
           if (secs > 0) {
             await doCall(stub, {
               op: 'cooldown',
+              dayAnchorUtc: cand.provider.dayAnchorUtc,
               bucket: bucket.id,
               seconds: secs,
               note: `upstream ${status}`,
@@ -519,6 +591,10 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
     }
   }
 
+  if (tried.length > 0 && tried.every((t) => t.reason === 'model_unavailable')) {
+    return jsonErr(404, `model '${modelStr}' is unavailable on every provider`, { tried }, { code: 'model_not_found' });
+  }
+
   return jsonErr(503, 'all providers exhausted or failing', { tried }, { code: 'all_providers_exhausted' });
 }
 
@@ -550,6 +626,7 @@ async function callUpstream(p: ProviderConfig, model: string, body: Record<strin
   // mirrors Cloudflare AI handling and makes embeddings/completions work uniformly.
   const isCompletions = endpoint.includes('/completions') && !endpoint.includes('chat');
   if (isCompletions) {
+    const wantsStream = (cleanBody as { stream?: unknown }).stream === true;
     const prompt = (cleanBody as { prompt?: unknown }).prompt;
     const promptText = typeof prompt === 'string' ? prompt : Array.isArray(prompt) ? (prompt as unknown[]).join('\n') : prompt != null ? String(prompt) : '';
     // Respect existing messages if client already sent them (some callers do)
@@ -562,6 +639,8 @@ async function callUpstream(p: ProviderConfig, model: string, body: Record<strin
           messages: [{ role: 'user', content: promptText }],
         };
     delete (chatBody as Record<string, unknown>).prompt;
+    // Synthesize the text_completion stream ourselves; upstream chat must not stream.
+    if (wantsStream) chatBody.stream = false;
     // Strip completions-only fields that chat doesn't expect, but keep common ones
     const url = `${p.baseUrl}/chat/completions`;
     const res = await fetch(url, {
@@ -595,6 +674,17 @@ async function callUpstream(p: ProviderConfig, model: string, body: Record<strin
               total_tokens: 0,
             },
           };
+          if (wantsStream) {
+            const first = { ...payload, choices: [{ text, index: 0, finish_reason: null }] };
+            const last = { ...payload, choices: [{ text: '', index: 0, finish_reason: 'stop' }] };
+            const body = `data: ${JSON.stringify(first)}\n\ndata: ${JSON.stringify(last)}\n\ndata: [DONE]\n\n`;
+            return {
+              res: new Response(body, {
+                status: 200,
+                headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' },
+              }),
+            };
+          }
           return {
             res: new Response(JSON.stringify(payload), {
               status: 200,
@@ -644,6 +734,14 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
       /* not JSON */
     }
   }
+  if (bodyBytes && (contentType ?? '').includes('application/json') && request.method === 'POST') {
+    try {
+      const j = JSON.parse(new TextDecoder().decode(bodyBytes)) as Record<string, unknown>;
+      if (typeof j.model === 'string') modelStr = j.model;
+    } catch {
+      /* not JSON */
+    }
+  }
 
   const caps = {
     vision: endpoint.includes('image'),
@@ -651,13 +749,19 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
     reasoning: false,
     estTotalTokens: 512,
   };
-  const candidates = buildCandidateChain(modelStr, caps, providers, [], endpoint);
+  const built = buildCandidateChain(modelStr, caps, providers, [], endpoint);
+  const candidates = built.candidates;
 
   if (candidates.length === 0) {
     const active = providers.filter((p) => !p.disabled);
     if (active.length === 0) return jsonErr(503, 'no providers available', {}, { code: 'no_providers' });
     // fallback to all active for raw
     candidates.push(...active.map((p) => ({ provider: p, model: modelStr })));
+  }
+
+  if (parseModelSpec(modelStr).model === 'auto') {
+    const snapshot = await loadMpxSnapshot(env as { MODELPULSE_URL?: unknown });
+    candidates.splice(0, candidates.length, ...rankCandidates(candidates, snapshot, (c) => c.provider.weight + (getScore(c.model)?.score ?? 0), built.primaryCount));
   }
 
   const tried: Attempt[] = [];
@@ -677,6 +781,11 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
         logAttempt(attempt, outcome);
         tried.push(attempt);
       };
+      if (!cand.provider.baseUrl) {
+        attempt.reason = 'unsupported_endpoint';
+        finish('skipped');
+        continue;
+      }
       const stub = env.LIMITER.get(env.LIMITER.idFromName(`limiter:${cand.provider.id}`));
       let acq: AcquireResult;
       try {
@@ -711,10 +820,23 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
           else headers['authorization'] = `Bearer ${bucket.key}`;
         }
         const timeoutMs = Number(env.UPSTREAM_TIMEOUT_MS) || 300000;
-        const res = await fetch(`${cand.provider.baseUrl}${endpoint}`, {
+        // JSON bodies are rewritable: send the provider's concrete model id.
+        let outboundBody: BodyInit | null = bodyBytes as BodyInit | null;
+        if (bodyBytes && (contentType ?? '').includes('application/json')) {
+          try {
+            const parsed = JSON.parse(new TextDecoder().decode(bodyBytes)) as Record<string, unknown>;
+            parsed.model = cand.model;
+            outboundBody = new TextEncoder().encode(JSON.stringify(parsed)).buffer as BodyInit;
+          } catch {
+            /* pass through non-JSON bodies untouched */
+          }
+        }
+        // Provider base URLs already end in /v1; strip the router's /v1 prefix.
+        const rawPath = endpoint.replace(/^\/v1(?=\/)/, '');
+        const res = await fetch(`${cand.provider.baseUrl}${rawPath}`, {
           method: request.method,
           headers,
-          body: bodyBytes as BodyInit | null,
+          body: outboundBody,
           signal: AbortSignal.timeout(timeoutMs),
         });
         const status = res.status;
@@ -722,6 +844,7 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
           const secs = retryAfterSeconds(res);
           await doCall(stub, {
             op: 'cooldown',
+            dayAnchorUtc: cand.provider.dayAnchorUtc,
             bucket: bucket.id,
             seconds: secs,
             note: 'upstream 429',
@@ -736,6 +859,7 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
           if (status === 404) {
             await doCall(stub, {
               op: 'cooldownModel',
+              dayAnchorUtc: cand.provider.dayAnchorUtc,
               bucket: bucket.id,
               model: cand.model,
               seconds: 300,
@@ -754,6 +878,7 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
           const secs = map[status] ?? 30;
           await doCall(stub, {
             op: 'cooldown',
+            dayAnchorUtc: cand.provider.dayAnchorUtc,
             bucket: bucket.id,
             seconds: secs,
             note: `upstream ${status}`,
@@ -772,6 +897,7 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
       } catch {
         await doCall(stub, {
           op: 'cooldown',
+          dayAnchorUtc: cand.provider.dayAnchorUtc,
           bucket: bucket.id,
           seconds: 30,
           note: 'network error',
@@ -781,6 +907,10 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
       }
     }
   }
+  if (tried.length > 0 && tried.every((t) => t.reason === 'model_unavailable')) {
+    return jsonErr(404, `model '${modelStr}' is unavailable on every provider`, { tried }, { code: 'model_not_found' });
+  }
+
   return jsonErr(503, 'all providers exhausted or failing', { tried }, { code: 'all_providers_exhausted' });
 }
 
@@ -790,9 +920,27 @@ async function callCloudflareAI(env: RouterEnv, model: string, body: Record<stri
   if (!env.AI) return { reason: 'AI binding not configured' };
   // Workers AI only supports chat/completions; for other endpoints synthesize or proxy as error.
   if (endpoint.includes('embeddings')) {
-    // Synthesize a fake embeddings response for DX; upstream doesn't have embeddings.
-    // Return 503 style but indicate model unavailable so fallback tries next provider.
-    return { reason: 'workers_ai_no_embeddings' };
+    try {
+      const input = (body as { input?: unknown }).input;
+      const texts = Array.isArray(input) ? input.map((v) => String(v)) : [String(input ?? '')];
+      const result = (await env.AI.run(model, { text: texts })) as { data?: number[][] };
+      const vectors = Array.isArray(result?.data) ? result.data : [];
+      if (vectors.length === 0) return { reason: 'workers_ai_error' };
+      const payload = {
+        object: 'list',
+        data: vectors.map((embedding, index) => ({ object: 'embedding', embedding, index })),
+        model,
+        usage: { prompt_tokens: 0, total_tokens: 0 },
+      };
+      return {
+        res: new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      };
+    } catch {
+      return { reason: 'workers_ai_error' };
+    }
   }
   if (endpoint.includes('completions') && !endpoint.includes('chat')) {
     // Map completions to chat internally: wrap prompt as user message.
@@ -939,9 +1087,15 @@ async function sanitizeChatContent(res: Response): Promise<Response | null> {
     const stripped = stripReasoningTags(msg.content);
     if (stripped === msg.content) return null;
     msg.content = stripped;
+    const headers = new Headers(res.headers);
+    // The body is re-serialized, so upstream entity/length headers are stale.
+    headers.delete('content-length');
+    headers.delete('content-encoding');
+    headers.delete('transfer-encoding');
+    headers.delete('connection');
     return new Response(JSON.stringify(j), {
       status: res.status,
-      headers: res.headers,
+      headers,
     });
   } catch {
     return null;

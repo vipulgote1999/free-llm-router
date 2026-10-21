@@ -14,9 +14,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Remove workerd (arm64-only) for x64 CI
-        run: jq 'del(.devDependencies["@cloudflare/workerd-linux-arm64"])' package.json > /tmp/package.json && mv /tmp/package.json package.json
-      - run: npm ci || npm install
+      - name: Install
+        run: npm ci
       - run: npm test
       - run: npm run typecheck
 
@@ -30,9 +29,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Remove workerd (arm64-only) for x64 CI
-        run: jq 'del(.devDependencies["@cloudflare/workerd-linux-arm64"])' package.json > /tmp/package.json && mv /tmp/package.json package.json
-      - run: npm ci || npm install
+      - name: Install
+        run: npm ci
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:

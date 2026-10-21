@@ -55,4 +55,6 @@ Banned dismissive phrases: "pre-existing", "unrelated to session", "not introduc
 ## Git
 
 - Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test:`, `perf:`.
+- Atomic commits: one logical change per commit, small and reversible; never bundle unrelated edits.
+- Preflight must be green before each commit (`npm test && npm run typecheck`).
 - workflow_mode: solo-git (see specs/state.yaml). Land via `release-branch` solo-local when the epic completes.

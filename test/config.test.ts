@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyRuntimeOverrides,
   bucketsFor,
   getModelLimits,
   getProviders,
   hash8,
+  isFreeForAuto,
   parseKeys,
 } from '../src/config';
 import { UNLIMITED } from '../src/windows';
@@ -121,5 +123,27 @@ describe('getModelLimits', () => {
     const gemini = ps.find((p) => p.id === 'gemini')!;
     expect(getModelLimits(gemini, 'gemini-2.5-flash').rpd).toBe(250);
     expect(getModelLimits(gemini, 'gemini-2.5-flash').tpd).toBe(UNLIMITED);
+  });
+});
+
+describe('ModelPulseX free filter', () => {
+  it('merges ModelPulseX free models and excludes retired ones from auto', () => {
+    const ps = getProviders({});
+    const zen = ps.find((p) => p.id === 'zen')!;
+    expect(zen.models.some((m) => m.id === 'deepseek-v4.1-flash-free')).toBe(true);
+    expect(isFreeForAuto(zen, 'deepseek-v4.1-flash-free')).toBe(true);
+    expect(isFreeForAuto(zen, 'muse-spark-1.2-contributor-free')).toBe(false);
+    const opencode = ps.find((p) => p.id === 'opencode')!;
+    expect(isFreeForAuto(opencode, 'claude-opus-5')).toBe(false);
+    const groq = ps.find((p) => p.id === 'groq')!;
+    expect(isFreeForAuto(groq, 'openai/gpt-oss-safeguard-20b')).toBe(true);
+  });
+
+  it('marks an explicitly configured auto model as overridden', () => {
+    const ps = getProviders({ GROQ_API_KEY: 'g' });
+    const on = applyRuntimeOverrides(ps, { zen: { autoText: 'deepseek-v4.1-flash-free' } });
+    const zen = on.find((p) => p.id === 'zen')!;
+    expect(zen.autoOverride?.text).toBe(true);
+    expect(zen.auto.text).toBe('deepseek-v4.1-flash-free');
   });
 });

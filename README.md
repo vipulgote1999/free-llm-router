@@ -25,21 +25,45 @@ Drop-in replacement: change only `base_url` to `https://<your-worker>.workers.de
 | Provider | Auth | Default free limits (RPM / RPD / TPM / TPD) | Models |
 |---|---|---|---|
 | cloudflare | Workers AI binding (no key) | 30 / 200* / — / — | @cf llama-3.3-70b, r1-distill, qwen-coder, llama vision + `bge-base`/`bge-m3` embeddings |
-| groq | `GROQ_API_KEY` | 30 / 1000 / 12K / 100K (per model) | llama-3.3-70b-versatile, llama-3.1-8b-instant, gpt-oss-20b/120b |
+| groq | `GROQ_API_KEY` | 30 / 1000 / 12K / 100K (per model) | llama-3.3-70b-versatile, llama-3.1-8b-instant, gpt-oss-20b/120b/safeguard-20b |
 | cerebras | `CEREBRAS_API_KEY` | 30 / — / 60K / 1M | gpt-oss-120b, gemma-4, glm-4.7 |
-| zen | keyless (IP-limited) | 10 / 100 / — / — | claude-4/5, gemini-3.x, gpt-5.x, grok-4.6, deepseek-v4, glm-5, kimi-k3, minimax, qwen3.x + `*-free` + `text-embedding-3-small` |
-| gemini | `GEMINI_API_KEY` | 10 / 250 / 250K / — (per model) | 2.5-flash, 2.5-pro, flash-lite, 3.5/3.6/3.7-flash, gemma-4 + `text-embedding-004` |
-| openrouter | `OPENROUTER_API_KEY` | 20 / 50 / — / — | nemotron-3 family, gemma-4, gpt-oss-20b, laguna, lfm, + `text-embedding-3-small:free` |
-| opencode | `OPENCODE_API_KEY` | 20 / 500 / — / — | same catalog as zen (free + paid) + `text-embedding-3-small` |
-| nvidia | `NVIDIA_API_KEY` | 40 / — / — / — | llama-3.3-70b, nemotron-3, gemma-4, muse, llama vision + `nv-embedqa` |
+| zen | keyless (IP-limited) | 10 / 100 / — / — | current ModelPulseX FREE set: deepseek-v4.1-flash-free, nemotron-3.5-super-vl-free, glm-5.3-flash-free, minimax-m3.1-flash-free |
+| gemini | `GEMINI_API_KEY` | 10 / 250 / 250K / — (per model) | 2.5-flash, 2.5-pro, flash-lite, 3.5/3.6/3.7-flash, gemma-4 + `gemini-embedding-001` |
+| openrouter | `OPENROUTER_API_KEY` | 20 / 50 / — / — | nemotron-3.5 family, minimax-m3.1, cohere north-mini-code, laguna, `openrouter/free` |
+| opencode | `OPENCODE_API_KEY` | 20 / 500 / — / — | same catalog as zen (free subset verified by ModelPulseX, plus paid models for explicit requests) |
+| nvidia | `NVIDIA_API_KEY` | 40 / — / — / — | llama-3.3-70b, diffusiongemma-26b, deepseek-v4.1, nemotron-3, llama vision |
 | sambanova | `SAMBANOVA_API_KEY` | 20 / 20 / — / 200K | Meta-Llama-3.3-70B-Instruct |
-| mistral | `MISTRAL_API_KEY` | 60 / — / 500K / — | mistral-small, codestral, ministral + `mistral-embed` |
+| mistral | `MISTRAL_API_KEY` | 60 / — / 500K / — | mistral-small, codestral, ministral-3b/14b + `mistral-embed` |
 | ollama | `OLLAMA_BASE_URL` | 60 / — / — / — | your pulled models + `nomic-embed-text` |
 | truerouter | `TRUEROUTER_API_KEY` | 20 / 200 / — / — | llama3.1:8b, qwen2.5-coder:7b |
 
 `*` Workers AI free tier is 10k neurons/day (not requests) — the request count is a conservative proxy; tune with `CLOUDFLARE_RPD`.
 
 All limits are env-overridable — see [Limit overrides](#limit-overrides).
+
+## Performance-aware auto routing (ModelPulseX)
+
+`model: "auto"` is driven by [ModelPulseX](https://modelpulsex.pages.dev), the live free-model
+observatory:
+
+- **Free-only pool** — `auto` considers only models ModelPulseX reports as `FREE` and active.
+  Paid/retired models stay requestable by exact id; they are not selected by `auto`.
+  Providers ModelPulseX does not cover (Cloudflare, SambaNova) use the static free-tier list.
+- **Measured ranking** — candidates are ordered by `0.45 × TPS + 0.25 × TTFT + 0.30 × 7-day
+  uptime`, shrunk toward neutral for low sample counts, with penalties for `RATE_LIMITED`,
+  `TIMEOUT`, `PROVIDER_ERROR`, and `STREAM_ERROR`. `MODEL_UNAVAILABLE` models are excluded.
+- **Fail-open** — the live leaderboard is fetched with a 1.2 s timeout and cached for 5 minutes.
+  If it is down, malformed, or stale, routing falls back to the checked-in snapshot
+  (`src/mpx-catalog.generated.ts`) and then to static weight/intelligence order. Routing never
+  blocks on ModelPulseX.
+- **Catalog sync** — `npm run sync:modelpulse` refreshes the checked-in FREE/`PREVIOUSLY_FREE`
+  catalog and last-known performance from `GET /api/models` + `GET /api/leaderboard`.
+  Override the host with `MODELPULSE_URL` (default `https://modelpulsex.pages.dev`).
+- **Embeddings** — `model: "auto"` on `/v1/embeddings` selects embeddings-capable models only
+  (Gemini, Mistral, Workers AI `bge-*`). `text-embedding-3-small` is no longer served by the free
+  tier; use `gemini-embedding-001` or `mistral-embed` explicitly.
+- **Admin overrides win** — an explicit `autoText`/`autoVision`/`autoAudio` value in the dashboard
+  is honored even if ModelPulseX has not verified that model.
 
 ## Quickstart
 
@@ -70,8 +94,10 @@ curl https://<worker>.workers.dev/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"llama-70b","messages":[{"role":"user","content":"hi"}]}'
 
-# OpenAI-compatible embeddings
-curl .../v1/embeddings -d '{"model":"text-embedding-3-small","input":"hello world"}'
+# OpenAI-compatible embeddings (free tier: Gemini, Mistral, Workers AI bge)
+curl .../v1/embeddings -d '{"model":"gemini-embedding-001","input":"hello world"}'
+curl .../v1/embeddings -d '{"model":"mistral-embed","input":"hello world"}'
+curl .../v1/embeddings -d '{"model":"auto","input":"hello world"}'
 
 # legacy completions
 curl .../v1/completions -d '{"model":"llama-70b","prompt":"Once upon"}'
@@ -103,8 +129,8 @@ from openai import OpenAI
 client = OpenAI(base_url="https://<worker>.workers.dev/v1", api_key="sk-anything-if-no-ROUTER_API_KEY")
 # chat
 client.chat.completions.create(model="auto", messages=[{"role":"user","content":"hello"}], stream=False)
-# embeddings
-client.embeddings.create(model="text-embedding-3-small", input="hello world")
+# embeddings (check the model's dimensions before storing vectors)
+client.embeddings.create(model="gemini-embedding-001", input="hello world")
 # completions
 client.completions.create(model="mistral-small-latest", prompt="Once upon", max_tokens=50)
 ```
@@ -126,7 +152,7 @@ Streaming (`"stream": true`) is passed through as `text/event-stream` with `[DON
 ## How routing works
 
 1. **Capability detection** — request body scanned: image/audio parts, `reasoning_effort`, estimated total tokens (including `max_tokens`). Long-context requests prefer models with larger windows.
-2. **Candidate chain** — providers filtered to those that (a) support the content type and (b) have the requested model or alias, sorted by weight; `reasoning` models are boosted for reasoning requests. `fallbacks` array is appended (deduplicated). For unknown embedding models, every enabled provider is tried weight-ordered.
+2. **Candidate chain** — for `auto`, only ModelPulseX-verified FREE models are considered and the chain is ranked by measured TPS/TTFT/uptime; for explicit models, providers that support the content type and have the requested model or alias are sorted by weight. `fallbacks` is appended (deduplicated). For unknown embedding models, every enabled provider is tried weight-ordered.
 3. **Capacity check** — Durable Object checks RPM/RPD/TPM/TPD windows and cooldowns. Out of quota → skip, note `retryAfter` + reset times.
 4. **Call upstream** — OpenAI-compatible `POST <providerBase>/chat/completions` (or `/completions`/`/embeddings`/etc.) with the right auth header. Every extra field (`tools`, `response_format`, `reasoning_effort`, etc.) is preserved.
 5. **On error** — `429` → cooldown until `Retry-After`/`X-RateLimit-Reset`; `401/403`→10m; `402`→12h; `404`→5m; `408/5xx`→30s with exponential backoff + jitter and then next provider/key is tried. `400 context_length_exceeded` also fails over to the next candidate (large-context fallback).
