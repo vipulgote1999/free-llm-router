@@ -13,7 +13,7 @@ stories:
     summary: >
       src/mpx.ts — provider/model normalization, leaderboard/catalog parsing, performance
       scoring, stable candidate ranking, free filtering. Unit-tested with fixtures.
-    status: pending
+    status: completed
     verify: npx vitest run test/mpx.test.ts
   - id: e04s02
     title: Catalog sync + generated snapshot
@@ -21,21 +21,21 @@ stories:
       scripts/sync-modelpulse.mjs fetches /api/models and /api/leaderboard, writes
       src/mpx-catalog.generated.ts; config.ts merges FREE models and marks PREVIOUSLY_FREE
       models non-auto. Rerunnable, non-destructive.
-    status: pending
+    status: completed
     verify: node scripts/sync-modelpulse.mjs && npm test
   - id: e04s03
     title: Live performance source
     summary: >
       src/mpx-source.ts — 1.2s timeout, 5-minute isolate cache, single-flight, stale check,
       fallback to generated snapshot, never throws. Unit-tested with mocked fetch.
-    status: pending
+    status: completed
     verify: npx vitest run test/mpx-source.test.ts
   - id: e04s04
     title: Auto routing integration
     summary: >
       router.ts loads the snapshot for auto, applies free filter + perf ranking, keeps
       explicit chains untouched; embeddings auto selects embeddings-capable models.
-    status: pending
+    status: completed
     verify: npm test
   - id: e04s05
     title: Production defect fixes
@@ -44,12 +44,12 @@ stories:
       404, touchKey, sanitizer headers, auto overrides, limiter anchor, arm64 optional dep,
       benchmark URL, dashboard escaping, legacy completions SSE, decode guard, raw provider
       skip, all-unavailable 404.
-    status: pending
+    status: completed
     verify: npm test && npm run typecheck
   - id: e04s06
     title: Verification and docs
     summary: >
       Full preflight green, live auto/embedding smoke, README provider/model updates, session
       log, spec state updated.
-    status: pending
+    status: completed
     verify: npm test && npm run typecheck

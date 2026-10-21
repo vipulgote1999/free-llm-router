@@ -21,3 +21,12 @@ e03:
     e03s02: completed  # LiteLLM fallback v2 (fallbacks param, context_length fallback, backoff+jitter, MAX_RETRIES)
     e03s03: completed  # Dashboard v2 + stats (health chips, p50/p95, logs ring, fallback chain)
     e03s04: completed  # Tests + docs (86 tests green, typecheck green)
+e04:
+  status: completed
+  stories:
+    e04s01: completed  # pure MPX parsing/scoring/ranking
+    e04s02: completed  # catalog sync + checked-in snapshot
+    e04s03: completed  # live source with cache + fail-open
+    e04s04: completed  # performance-aware auto + embeddings auto
+    e04s05: completed  # production defect fixes
+    e04s06: completed  # docs + verification (live deploy pending)
