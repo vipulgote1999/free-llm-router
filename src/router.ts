@@ -582,6 +582,16 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
       }
 
       // ---- success (2xx) — strip reasoning leakage (JSON + SSE), else passthrough ----
+      if (endpoint.includes('chat/completions') && body.stream !== true) {
+        // Some upstreams answer 200 with a blank assistant message. Fail over
+        // instead of handing the client an empty completion.
+        if (await isEmptyChatCompletion(res)) {
+          attempt.reason = 'empty_response';
+          finish('error');
+          attemptIndex++;
+          continue;
+        }
+      }
       finish('ok');
       if (endpoint.includes('chat/completions')) {
         if (body.stream === true) {
@@ -1076,6 +1086,39 @@ function aiText(raw: unknown): string {
     return JSON.stringify(raw) ?? '';
   } catch {
     return String(raw);
+  }
+}
+
+/**
+ * True when a non-streaming JSON chat response succeeded but produced no
+ * usable assistant message. Tool calls, refusals, and responses truncated by
+ * `max_tokens` are legitimate and never count as empty.
+ */
+async function isEmptyChatCompletion(res: Response): Promise<boolean> {
+  const ct = res.headers.get('content-type') ?? '';
+  if (!ct.includes('application/json')) return false;
+  try {
+    const j = (await res.clone().json()) as {
+      choices?: {
+        message?: {
+          content?: unknown;
+          tool_calls?: unknown;
+          function_call?: unknown;
+          refusal?: unknown;
+        };
+        finish_reason?: unknown;
+      }[];
+    };
+    const choice = j?.choices?.[0];
+    const msg = choice?.message;
+    if (!msg) return false;
+    if (choice?.finish_reason === 'length') return false;
+    if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) return false;
+    if (msg.function_call != null || msg.refusal != null) return false;
+    if (typeof msg.content === 'string') return msg.content.trim() === '';
+    return msg.content == null;
+  } catch {
+    return false;
   }
 }
 

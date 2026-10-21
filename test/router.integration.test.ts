@@ -147,6 +147,91 @@ describe('routeChat end-to-end (mocked DO + upstreams)', () => {
     expect(j.choices[0]?.message.content).toBe('hello from groq');
   });
 
+  it('fails over when an upstream returns 200 with empty content', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes('api.groq.com')) return upstreamResponse('');
+        if (String(url).includes('integrate.api.nvidia.com')) return upstreamResponse('from nvidia');
+        return new Response('not found', { status: 404 });
+      }),
+    );
+    const env = makeEnv({ GROQ_API_KEY: 'g', NVIDIA_API_KEY: 'n' });
+    const res = await routeChat(makeRequest('llama-70b'), env as never, {
+      model: 'llama-70b',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-router-provider')).toBe('nvidia');
+  });
+
+  it('keeps tool-call responses whose content is null', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch(
+        () =>
+          new Response(
+            JSON.stringify({
+              choices: [
+                {
+                  message: {
+                    role: 'assistant',
+                    content: null,
+                    tool_calls: [
+                      { id: 't', type: 'function', function: { name: 'f', arguments: '{}' } },
+                    ],
+                  },
+                  finish_reason: 'tool_calls',
+                },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+      ),
+    );
+    const env = makeEnv({ GROQ_API_KEY: 'g' });
+    const res = await routeChat(makeRequest('groq/llama-3.3-70b-versatile'), env as never, {
+      model: 'groq/llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-router-provider')).toBe('groq');
+  });
+
+  it('keeps empty content truncated by max_tokens', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch(
+        () =>
+          new Response(
+            JSON.stringify({
+              choices: [{ message: { role: 'assistant', content: '' }, finish_reason: 'length' }],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+      ),
+    );
+    const env = makeEnv({ GROQ_API_KEY: 'g' });
+    const res = await routeChat(makeRequest('groq/llama-3.3-70b-versatile'), env as never, {
+      model: 'groq/llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-router-provider')).toBe('groq');
+  });
+
+  it('returns 503 when every candidate returns empty content', async () => {
+    vi.stubGlobal('fetch', mockFetch(() => upstreamResponse('')));
+    const env = makeEnv({ GROQ_API_KEY: 'g' });
+    const res = await routeChat(makeRequest('groq/llama-3.3-70b-versatile'), env as never, {
+      model: 'groq/llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(503);
+    const j = (await res.json()) as { error: { tried: { reason: string }[] } };
+    expect(j.error.tried.every((t) => t.reason === 'empty_response')).toBe(true);
+  });
+
   it('fails over on 429 and cools the exhausted bucket down', async () => {
     const fetchMockFn = vi.fn().mockImplementation(async (url: string) => {
       if (String(url).includes('api.groq.com')) {
