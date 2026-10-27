@@ -287,7 +287,10 @@ td{font-size:12.5px}
     <div style="grid-column:1 / 13" class="folio">QUICK START — COPY / PASTE / TRY</div>
   </div>
   <div class="band" style="margin-top:8px">
-    <div style="grid-column:1 / 5"><h2 class="shead" style="margin:0"><h2 style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin:0">Base URL</h2><p>OpenAI-compatible. Use any OpenAI SDK (Python / TS / Go) by pointing <code>base_url</code> at <code>/v1</code>.</p></h2></div>
+    <div style="grid-column:1 / 5" class="shead">
+      <h2>Base URL</h2>
+      <p>OpenAI-compatible. Use any OpenAI SDK (Python / TS / Go) by pointing <code>base_url</code> at <code>/v1</code>.</p>
+    </div>
     <div style="grid-column:5 / 13">
       <div style="font-family:Space Mono,monospace;font-size:12px;background:var(--panel);border:1px solid var(--line);padding:10px;overflow:auto">
         <div class="muted">base_url</div>
@@ -463,7 +466,7 @@ function setGrid(on){document.body.classList.toggle('grid-on',on); if(btn){btn.s
 if(btn) btn.addEventListener('click',function(){setGrid(!document.body.classList.contains('grid-on'));});
 document.addEventListener('keydown',function(e){if((e.key==='g'||e.key==='G')&&!e.metaKey&&!e.ctrlKey&&!e.altKey){setGrid(!document.body.classList.contains('grid-on'));}});
 document.querySelectorAll('.guides .cols').forEach(function(h){var n=getComputedStyle(document.documentElement).getPropertyValue('--cols').trim()||'12'; for(var i=1;i<=parseInt(n,10);i++){var c=document.createElement('div');c.className='col';var s=document.createElement('span');s.textContent=i;c.appendChild(s);h.appendChild(c);}});
-(function(){var cvs=document.createElement('canvas'),ctx=cvs.getContext('2d');var sel='.masthead, .numeral, .shead h2';function align(){document.querySelectorAll(sel).forEach(function(el){el.style.marginLeft='0px';var cs=getComputedStyle(el),ch=(el.textContent||'').trim().charAt(0); if(!ch) return; if(cs.textTransform==='uppercase') ch=ch.toUpperCase();ctx.font=cs.fontStyle+' '+cs.fontWeight+' '+cs.fontSize+' '+cs.fontFamily;ctx.textAlign='left';var abl=ctx.measureText(ch).actualBoundingBoxLeft; if(isFinite(abl)) el.style.marginLeft=abl.toFixed(2)+'px';});} if(document.fonts&&document.fonts.ready) document.fonts.ready.then(align); align(); var t;window.addEventListener('resize',function(){clearTimeout(t);t=setTimeout(align,120);});})();
+(function(){var cvs=document.createElement('canvas'),ctx=null;try{ctx=cvs.getContext('2d');}catch(e){} if(!ctx) return;/* no 2D canvas (privacy mode / restricted) — skip optical alignment, keep the page working */var sel='.masthead, .numeral, .shead h2';function align(){document.querySelectorAll(sel).forEach(function(el){el.style.marginLeft='0px';var cs=getComputedStyle(el),ch=(el.textContent||'').trim().charAt(0); if(!ch) return; if(cs.textTransform==='uppercase') ch=ch.toUpperCase();ctx.font=cs.fontStyle+' '+cs.fontWeight+' '+cs.fontSize+' '+cs.fontFamily;ctx.textAlign='left';var abl=ctx.measureText(ch).actualBoundingBoxLeft; if(isFinite(abl)) el.style.marginLeft=abl.toFixed(2)+'px';});} if(document.fonts&&document.fonts.ready) document.fonts.ready.then(align); align(); var t;window.addEventListener('resize',function(){clearTimeout(t);t=setTimeout(align,120);});})();
 
 /* dashboard logic — baseline-locked, same IDs as before */
 var $ = function(s){return document.querySelector(s)};
@@ -652,7 +655,7 @@ async function tryIt(){
   try {
     var res=await fetch('/v1/chat/completions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:'auto',messages:[{role:'user',content:'Say hi in one word.'}],max_tokens:20})});
     var data=await res.json();
-    out.textContent='HTTP '+res.status+'\n'+JSON.stringify(data,null,2);
+    out.textContent='HTTP '+res.status+'\\n'+JSON.stringify(data,null,2);
   } catch(e){ out.textContent='error: '+String(e); }
 }
 load(); setAuto(true);
