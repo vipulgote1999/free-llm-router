@@ -214,12 +214,16 @@ function estimateTokens(body: Record<string, unknown>, endpoint: string): number
   return 512;
 }
 
-function classifyErrorForCooldown(status: number, bodyIndicatesContextExceeded: boolean): { seconds: number; reason: string; retryable: boolean } {
+export function classifyErrorForCooldown(status: number, bodyIndicatesContextExceeded: boolean): { seconds: number; reason: string; retryable: boolean } {
+  // LiteLLM/OpenAI retry semantics: 408, 409, 429 and >=500 are retryable.
+  // 409 Conflict is a transient lock/contention signal from upstream providers
+  // (e.g. concurrency limits) and must fail over instead of reaching the client.
   if (status === 429) return { seconds: 60, reason: 'rate_limited', retryable: true };
   if (status === 401 || status === 403) return { seconds: 600, reason: 'auth_error', retryable: true };
   if (status === 402) return { seconds: 43200, reason: 'no_credits', retryable: true };
   if (status === 404) return { seconds: 0, reason: 'model_unavailable', retryable: true }; // auto-healing: per-model, no bucket cooldown
   if (status === 408) return { seconds: 30, reason: 'upstream_error', retryable: true };
+  if (status === 409) return { seconds: 30, reason: 'conflict', retryable: true };
   if (status >= 500) return { seconds: 30, reason: 'upstream_error', retryable: true };
   if (status === 400 && bodyIndicatesContextExceeded) return { seconds: 30, reason: 'context_exceeded', retryable: true };
   // 400 invalid_request for other reasons is NOT retryable (bad client input)
@@ -520,7 +524,7 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
           // Apply exponential backoff for 5xx/408 etc where seconds is base
           const base = cls.seconds || 30;
           const withBackoff = base * (1 + Math.min(attemptIndex, 3) * 0.5);
-          const secs = status >= 500 || status === 408 ? jittered(withBackoff) : base;
+          const secs = status >= 500 || status === 408 || status === 409 ? jittered(withBackoff) : base;
           if (secs > 0) {
             await doCall(stub, {
               op: 'cooldown',
@@ -532,9 +536,9 @@ async function routeWithEndpoint(request: Request, env: RouterEnv, body: Record<
           }
         }
         attempt.reason = cls.reason;
-        if (status === 402 || status === 404 || status === 401 || status === 403 || status >= 500 || status === 408) {
+        if (status === 402 || status === 404 || status === 401 || status === 403 || status >= 500 || status === 408 || status === 409) {
           // these are retryable to next provider
-          finish(status >= 500 || status === 408 ? 'error' : 'skipped');
+          finish(status >= 500 || status === 408 || status === 409 ? 'error' : 'skipped');
           attemptIndex++;
           continue;
         }
@@ -875,7 +879,7 @@ export async function routeRaw(request: Request, env: RouterEnv, endpoint: strin
           finish('skipped');
           continue;
         }
-        if ([401, 403, 402, 404, 408].includes(status) || status >= 500) {
+        if ([401, 403, 402, 404, 408, 409].includes(status) || status >= 500) {
           // Auto-healing: 404 is per-model, cooldown only that model
           if (status === 404) {
             await doCall(stub, {
