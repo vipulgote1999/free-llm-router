@@ -279,6 +279,78 @@ td{font-size:12.5px}
 </div>
 </section>
 
+<!-- SPREAD 1b — quick start / docs -->
+<section class="spread" id="quickstart">
+<div class="wrap">
+<div class="grid">
+  <div class="band" style="margin-bottom:8px">
+    <div style="grid-column:1 / 13" class="folio">QUICK START — COPY / PASTE / TRY</div>
+  </div>
+  <div class="band" style="margin-top:8px">
+    <div style="grid-column:1 / 5"><h2 class="shead" style="margin:0"><h2 style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin:0">Base URL</h2><p>OpenAI-compatible. Use any OpenAI SDK (Python / TS / Go) by pointing <code>base_url</code> at <code>/v1</code>.</p></h2></div>
+    <div style="grid-column:5 / 13">
+      <div style="font-family:Space Mono,monospace;font-size:12px;background:var(--panel);border:1px solid var(--line);padding:10px;overflow:auto">
+        <div class="muted">base_url</div>
+        <div id="baseUrl">https://free-llm-router.vipulgote5.workers.dev/v1</div>
+      </div>
+    </div>
+  </div>
+  <div class="band" style="margin-top:8px">
+    <div style="grid-column:1 / 7">
+      <div class="card">
+        <h3>Python — openai</h3>
+        <pre style="margin:0;font-family:Space Mono,monospace;font-size:11px;line-height:16px;overflow:auto;background:var(--panel);border:1px solid var(--line);padding:10px">from openai import OpenAI
+client = OpenAI(
+  base_url="https://free-llm-router.vipulgote5.workers.dev/v1",
+  api_key="sk-fr-...",
+)
+r = client.chat.completions.create(
+  model="auto",
+  messages=[{"role":"user","content":"hi"}],
+)
+print(r.choices[0].message.content)</pre>
+      </div>
+    </div>
+    <div style="grid-column:7 / 13">
+      <div class="card">
+        <h3>TypeScript — openai</h3>
+        <pre style="margin:0;font-family:Space Mono,monospace;font-size:11px;line-height:16px;overflow:auto;background:var(--panel);border:1px solid var(--line);padding:10px">import OpenAI from 'openai';
+const client = new OpenAI({
+  baseURL: 'https://free-llm-router.vipulgote5.workers.dev/v1',
+  apiKey: 'sk-fr-...',
+});
+const r = await client.chat.completions.create({
+  model: 'auto',
+  messages: [{ role: 'user', content: 'hi' }],
+});
+console.log(r.choices[0].message.content);</pre>
+      </div>
+    </div>
+  </div>
+  <div class="band" style="margin-top:8px">
+    <div style="grid-column:1 / 7">
+      <div class="card">
+        <h3>curl</h3>
+        <pre style="margin:0;font-family:Space Mono,monospace;font-size:11px;line-height:16px;overflow:auto;background:var(--panel);border:1px solid var(--line);padding:10px">curl https://free-llm-router.vipulgote5.workers.dev/v1/chat/completions \
+  -H "Authorization: Bearer sk-fr-..." \
+  -H "Content-Type: application/json" \
+  -d '{"model":"auto","messages":[{"role":"user","content":"hi"}]}'</pre>
+      </div>
+    </div>
+    <div style="grid-column:7 / 13">
+      <div class="card">
+        <h3>Try it (live)</h3>
+        <p class="muted" style="font-size:12px;line-height:16px">Sends one sample request to <code>/v1/chat/completions</code> using your session key (if logged in) or the demo key.</p>
+        <button class="btn accent" id="tryBtn" onclick="tryIt()">▶ Run sample request</button>
+        <pre id="tryOut" style="margin-top:8px;min-height:60px;font-family:Space Mono,monospace;font-size:11px;line-height:16px;overflow:auto;background:var(--panel);border:1px solid var(--line);padding:10px">— output appears here —</pre>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="guides" aria-hidden="true"><div class="cols"></div><div class="rows"></div><div class="mline l"></div><div class="mline r"></div></div>
+</div>
+</section>
+
 <!-- SPREAD 2 — providers -->
 <section class="spread" id="providers">
 <div class="wrap">
@@ -574,6 +646,15 @@ function renderChain(logs){
   el.innerHTML=html;
 }
 async function resetAll(){var res=await fetch('/admin/reset',{method:'POST'}); if(!res.ok) alert('reset failed'); load();}
+async function tryIt(){
+  var out=document.getElementById('tryOut'); if(!out) return;
+  out.textContent='running…';
+  try {
+    var res=await fetch('/v1/chat/completions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:'auto',messages:[{role:'user',content:'Say hi in one word.'}],max_tokens:20})});
+    var data=await res.json();
+    out.textContent='HTTP '+res.status+'\n'+JSON.stringify(data,null,2);
+  } catch(e){ out.textContent='error: '+String(e); }
+}
 load(); setAuto(true);
 </script>
 </body>
