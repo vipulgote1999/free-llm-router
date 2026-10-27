@@ -159,7 +159,8 @@ body.grid-on .guides{opacity:1}
 .guides .mline{position:absolute;top:0;bottom:0;width:1px;background:var(--g-edge)}
 .guides .mline.l{left:var(--margin)}.guides .mline.r{right:var(--margin)}
 
-.toggle{position:fixed;top:16px;right:16px;z-index:200;display:flex;align-items:center;gap:10px;background:var(--ink);color:#fff;border:none;cursor:pointer;font-family:"Space Mono",monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:10px 14px}
+.toggle{position:fixed;bottom:16px;right:16px;z-index:200;display:flex;align-items:center;gap:8px;background:var(--ink);color:#fff;border:none;cursor:pointer;font-family:"Space Mono",monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;padding:8px 12px;opacity:.9}
+.toggle:hover{opacity:1}
 .toggle .dot{width:8px;height:8px;border-radius:50%;background:#555}
 body.grid-on .toggle{background:var(--accent)}body.grid-on .toggle .dot{background:#fff}
 
@@ -192,7 +193,8 @@ body.grid-on .toggle{background:var(--accent)}body.grid-on .toggle .dot{backgrou
 .badge.ok{color:var(--green);border-color:rgba(10,122,66,.3);background:rgba(10,122,66,.06)}
 .badge.cool{color:var(--red);border-color:rgba(228,0,43,.3);background:rgba(228,0,43,.06)}
 .badge.dis{color:var(--ink-soft)}
-.bar{height:6px;background:var(--panel);border:1px solid var(--line);overflow:hidden}
+.nowrap{white-space:nowrap}
+.bar{height:6px;background:var(--panel);border:1px solid var(--line);overflow:hidden;max-width:150px;margin-top:4px}
 .bar i{display:block;height:100%;background:var(--green);transition:width .3s}
 .bar.hot i{background:#c9a100}.bar.full i{background:var(--red)}
 
@@ -334,7 +336,7 @@ console.log(r.choices[0].message.content);</pre>
     <div style="grid-column:1 / 7">
       <div class="card">
         <h3>curl</h3>
-        <pre style="margin:0;font-family:Space Mono,monospace;font-size:11px;line-height:16px;overflow:auto;background:var(--panel);border:1px solid var(--line);padding:10px">curl https://free-llm-router.vipulgote5.workers.dev/v1/chat/completions \
+        <pre style="margin:0;font-family:Space Mono,monospace;font-size:11px;line-height:16px;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--panel);border:1px solid var(--line);padding:10px">curl https://free-llm-router.vipulgote5.workers.dev/v1/chat/completions \
   -H "Authorization: Bearer sk-fr-..." \
   -H "Content-Type: application/json" \
   -d '{"model":"auto","messages":[{"role":"user","content":"hi"}]}'</pre>
@@ -343,7 +345,9 @@ console.log(r.choices[0].message.content);</pre>
     <div style="grid-column:7 / 13">
       <div class="card">
         <h3>Try it (live)</h3>
-        <p class="muted" style="font-size:12px;line-height:16px">Sends one sample request to <code>/v1/chat/completions</code> using your session key (if logged in) or the demo key.</p>
+        <p class="muted" style="font-size:12px;line-height:16px">Paste an API key from <a href="/keys">/keys</a> (or sign in at <a href="/login">/login</a>) and run one real request to <code>/v1/chat/completions</code>. The key stays in this browser only.</p>
+        <input id="tryKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-fr-… (stored locally, never sent anywhere else)"
+          style="width:100%;padding:8px 10px;border:1px solid var(--line);font-family:'Space Mono',monospace;font-size:11px">
         <button class="btn accent" id="tryBtn" onclick="tryIt()">▶ Run sample request</button>
         <pre id="tryOut" style="margin-top:8px;min-height:60px;font-family:Space Mono,monospace;font-size:11px;line-height:16px;overflow:auto;background:var(--panel);border:1px solid var(--line);padding:10px">— output appears here —</pre>
       </div>
@@ -372,7 +376,7 @@ console.log(r.choices[0].message.content);</pre>
 
   <div class="band">
     <div style="grid-column:1 / 13" class="table-wrap">
-      <table id="providers"><thead><tr><th>provider</th><th>bucket</th><th>RPM</th><th>TPM</th><th>RPD</th><th>resets</th><th>health</th></tr></thead><tbody></tbody></table>
+      <table id="providers"><thead><tr><th style="min-width:230px">provider</th><th style="min-width:120px">RPM / min</th><th style="min-width:120px">TPM / min</th><th style="min-width:120px">RPD / day</th><th style="min-width:220px">health</th></tr></thead><tbody></tbody></table>
     </div>
   </div>
 
@@ -464,7 +468,12 @@ curl https://$HOST/v1/embeddings \\
 var btn=document.getElementById('gridToggle');
 function setGrid(on){document.body.classList.toggle('grid-on',on); if(btn){btn.setAttribute('aria-pressed',on?'true':'false'); var l=btn.querySelector('.lbl'); if(l) l.textContent=on?'Hide grid':'Show grid';}}
 if(btn) btn.addEventListener('click',function(){setGrid(!document.body.classList.contains('grid-on'));});
-document.addEventListener('keydown',function(e){if((e.key==='g'||e.key==='G')&&!e.metaKey&&!e.ctrlKey&&!e.altKey){setGrid(!document.body.classList.contains('grid-on'));}});
+document.addEventListener('keydown',function(e){
+  // Never hijack typing: the grid shortcut must not fire inside form fields.
+  var t=e.target||{},tag=(t.tagName||'').toLowerCase();
+  if(tag==='input'||tag==='textarea'||tag==='select'||t.isContentEditable) return;
+  if((e.key==='g'||e.key==='G')&&!e.metaKey&&!e.ctrlKey&&!e.altKey){setGrid(!document.body.classList.contains('grid-on'));}
+});
 document.querySelectorAll('.guides .cols').forEach(function(h){var n=getComputedStyle(document.documentElement).getPropertyValue('--cols').trim()||'12'; for(var i=1;i<=parseInt(n,10);i++){var c=document.createElement('div');c.className='col';var s=document.createElement('span');s.textContent=i;c.appendChild(s);h.appendChild(c);}});
 (function(){var cvs=document.createElement('canvas'),ctx=null;try{ctx=cvs.getContext('2d');}catch(e){} if(!ctx) return;/* no 2D canvas (privacy mode / restricted) — skip optical alignment, keep the page working */var sel='.masthead, .numeral, .shead h2';function align(){document.querySelectorAll(sel).forEach(function(el){el.style.marginLeft='0px';var cs=getComputedStyle(el),ch=(el.textContent||'').trim().charAt(0); if(!ch) return; if(cs.textTransform==='uppercase') ch=ch.toUpperCase();ctx.font=cs.fontStyle+' '+cs.fontWeight+' '+cs.fontSize+' '+cs.fontFamily;ctx.textAlign='left';var abl=ctx.measureText(ch).actualBoundingBoxLeft; if(isFinite(abl)) el.style.marginLeft=abl.toFixed(2)+'px';});} if(document.fonts&&document.fonts.ready) document.fonts.ready.then(align); align(); var t;window.addEventListener('resize',function(){clearTimeout(t);t=setTimeout(align,120);});})();
 
@@ -476,8 +485,14 @@ var inSec = function(ts, now){return Math.max(0, Math.ceil((ts-now)/1000))};
 var fmtSec = function(s){ if(s<60)return s+'s'; if(s<3600)return (s/60|0)+'m '+(s%60)+'s'; if(s<86400)return (s/3600|0)+'h '+((s%3600)/60|0)+'m'; return (s/86400|0)+'d '+((s%86400)/3600|0)+'h';};
 var fmtClock = function(ts){ var d=new Date(ts); return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});};
 var pct = function(used, limit){ return limit>1e15 ? 0 : Math.min(100, Math.round((used/limit)*100));};
-function bar(used, limit){var p=pct(used,limit);var cls=p>=100?'full':p>=80?'hot':'';return '<div class="bar '+cls+'"><i style="width:'+p+'%"></i></div><span class="muted mono" style="font-size:10px">'+p+'%</span>';}
-function cell(used, limit){var isInf=limit>1e15; return '<span class="mono">'+used+' / '+(isInf?'∞':limit)+'</span>'+bar(used,limit);}
+function bar(used, limit){var p=pct(used,limit);var cls=p>=100?'full':p>=80?'hot':'';return '<div class="bar '+cls+'"><i style="width:'+p+'%"></i></div>';}
+function cell(used, limit, resetSec){
+  var isInf=limit>1e15;
+  var p=pct(used,limit);
+  return '<div class="mono nowrap" style="font-size:12px">'+used+' <span class="muted">/ '+(isInf?'∞':limit)+'</span> <span class="muted" style="font-size:10px">'+p+'%</span></div>'
+    + bar(used, limit)
+    + (resetSec!=null ? '<div class="muted mono" style="font-size:10px; line-height:14px">resets in '+fmtSec(resetSec)+'</div>' : '');
+}
 let timer=null;
 function setAuto(on){var cb=$('#auto'); if(cb) cb.checked=on; if(timer) clearInterval(timer); if(on) timer=setInterval(load,5000); var btn=$('#autoBtn'); if(btn) btn.textContent= on ? '⏸ Pause auto-refresh' : '▶ Resume auto-refresh';}
 function toggleAuto(){var cb=$('#auto'); setAuto(!cb.checked); }
@@ -501,7 +516,7 @@ async function load(){
     var gen=$('#generated'); if(gen) gen.textContent='updated '+fmt(now)+' · auto '+( $('#auto')&&$('#auto').checked ? 'on' : 'off');
     var fr=$('#folioRight'); if(fr) fr.textContent='EDITION 0.3 · '+rows.length+' PROVIDERS · '+rows.reduce(function(a,r){return a+(r.models||0)},0)+' MODELS';
     if(location.hostname){var h=location.host; var el=$('#host'); if(el) el.textContent=h; var c=$('#curl'); if(c) c.textContent=c.textContent.replaceAll('$HOST', h);}
-  }catch(e){var tb=document.querySelector('#providers tbody'); if(tb) tb.innerHTML='<tr><td colspan="7" class="muted">failed to load: '+String(e)+'</td></tr>';}
+  }catch(e){var tb=document.querySelector('#providers tbody'); if(tb) tb.innerHTML='<tr><td colspan="5" class="muted">failed to load: '+String(e)+'</td></tr>';}
 }
 function renderChips(rows, summary, now){
   var total=rows.length; var enabled=rows.filter(function(r){return !r.disabled}).length;
@@ -556,10 +571,10 @@ function renderSummary(rows, summary, logs, now){
 }
 function renderProviders(rows, now){
   var tbody=document.querySelector('#providers tbody'); if(!tbody) return;
-  if(!rows.length){tbody.innerHTML='<tr><td colspan="7"><div style="padding:16px; text-align:center; color:var(--ink-soft)">no providers configured</div></td></tr>'; return;}
+  if(!rows.length){tbody.innerHTML='<tr><td colspan="5"><div style="padding:16px; text-align:center; color:var(--ink-soft)">no providers configured</div></td></tr>'; return;}
   var html='';
   for(var i=0;i<rows.length;i++){var p=rows[i]; var ids=Object.keys(p.buckets||{}); var health = p.disabled ? 'disabled' : (ids.some(function(id){return (p.buckets[id].cooldownUntil||0) > now}) ? 'cooldown' : 'ok'); var rowCls = p.disabled ? 'disabled' : health==='cooldown' ? 'cooldown' : '';
-    if(ids.length===0){html += '<tr class="provider-row '+rowCls+'"><td><b>'+esc(p.name)+'</b> <span class="muted mono">'+esc(p.provider)+'</span> <span class="pill">'+p.weight+'</span> '+(p.disabled? '<span class="badge dis" title="'+esc(p.disabledReason||'')+'">disabled</span>' : (health==='cooldown'?'<span class="badge cool">cooldown</span>':'<span class="badge ok">ok</span>'))+'<div class="muted" style="font-size:11px; line-height:16px">'+p.models+' models · anchor UTC '+p.dayAnchorUtc+'</div></td><td class="muted">no traffic yet</td><td colspan="5" class="muted">—</td></tr>'; continue;}
+    if(ids.length===0){html += '<tr class="provider-row '+rowCls+'"><td><b>'+esc(p.name)+'</b> <span class="muted mono">'+esc(p.provider)+'</span> <span class="pill">'+p.weight+'</span> '+(p.disabled? '<span class="badge dis" title="'+esc(p.disabledReason||'')+'">disabled</span>' : (health==='cooldown'?'<span class="badge cool">cooldown</span>':'<span class="badge ok">ok</span>'))+'<div class="muted" style="font-size:10px; line-height:14px">'+p.models+' models · anchor UTC '+p.dayAnchorUtc+'</div></td><td colspan="4" class="muted mono" style="font-size:10px">no traffic yet</td></tr>'; continue;}
     for(var j=0;j<ids.length;j++){var id=ids[j]; var b=p.buckets[id]; var cd=Math.max(0,(b.cooldownUntil||0)-now); var cdTxt= cd>0 ? '<span class="badge cool">'+fmtSec(Math.ceil(cd/1000))+'</span>' : '<span class="badge ok">clear</span>'; var resetMin = inSec(b.minuteResetsAt, now); var resetDayH = (inSec(b.dayResetsAt, now)/3600).toFixed(1);
       // per-model cooldowns (NEW: 404 now cools only the model, not the whole bucket)
       var modelCdHtml = '';
@@ -577,17 +592,18 @@ function renderProviders(rows, now){
           modelCdHtml += '</div>';
         }
       }
+      var best=null,rn='';for(var sk in (p.scores||{})){var sc=p.scores[sk];if(sc&&sc.score!=null&&(best==null||sc.score>best)){best=sc.score;rn=sc.rank||''}}
       html += '<tr class="provider-row '+rowCls+'">'
-        + '<td><b>'+esc(p.name)+'</b> <span class="muted mono">'+esc(p.provider)+'</span> <span class="pill mono">'+esc(id)+'</span><div class="muted mono" style="font-size:10px; line-height:16px">w '+p.weight+' · '+p.models+' models'+(function(){var best=null,rn="";for(var k in (p.scores||{})){var s=p.scores[k];if(s&&s.score!=null&&(best==null||s.score>best)){best=s.score;rn=s.rank||""}}return best!=null?' · AA '+best+(rn?" "+rn:""):''})()+'</div></td>'
-        + '<td>'+esc(id)+'</td>'
-        + '<td>'+cell(b.minute.requests, p.limits.rpm)+'<div class="muted mono" style="font-size:10px; line-height:16px">reset '+fmtSec(resetMin)+'</div></td>'
+        + '<td><b>'+esc(p.name)+'</b> <span class="muted mono">'+esc(p.provider)+'</span>'
+        +   '<div style="margin-top:4px"><span class="pill mono">'+esc(id)+'</span></div>'
+        +   '<div class="muted mono" style="font-size:10px; line-height:14px">w '+p.weight+' · '+p.models+' models'+(best!=null?' · AA '+best+(rn?' '+rn:''):'')+'</div></td>'
+        + '<td>'+cell(b.minute.requests, p.limits.rpm, resetMin)+'</td>'
         + '<td>'+cell(b.minute.tokens, p.limits.tpm)+'</td>'
-        + '<td>'+cell(b.day.requests, p.limits.rpd)+'<div class="muted mono" style="font-size:10px; line-height:16px">'+resetDayH+'h · '+fmt(b.dayResetsAt)+'</div></td>'
-        + '<td class="mono" style="font-size:11px; line-height:16px"><div>'+fmtSec(resetMin)+' <span class="muted">'+fmt(b.minuteResetsAt)+'</span></div><div>'+resetDayH+'h <span class="muted">'+fmt(b.dayResetsAt)+'</span></div></td>'
-        + '<td>'+cdTxt + (b.lastError? '<div class="mono" style="font-size:10px; line-height:16px; color:var(--red); margin-top:4px">'+esc(b.lastError)+'</div>' : '') + modelCdHtml + '</td>'
+        + '<td>'+cell(b.day.requests, p.limits.rpd, inSec(b.dayResetsAt, now))+'</td>'
+        + '<td>'+cdTxt + (b.lastError? '<div class="mono" style="font-size:10px; line-height:14px; color:var(--red); margin-top:4px">'+esc(b.lastError)+'</div>' : '') + modelCdHtml + '</td>'
         + '</tr>';}
   }
-  tbody.innerHTML=html || '<tr><td colspan="7" class="muted">no buckets</td></tr>';
+  tbody.innerHTML=html || '<tr><td colspan="5" class="muted">no buckets</td></tr>';
 }
 function renderCfg(rows, config){
   var tbody=document.querySelector('#cfgTable tbody'); if(!tbody) return;
@@ -649,15 +665,26 @@ function renderChain(logs){
   el.innerHTML=html;
 }
 async function resetAll(){var res=await fetch('/admin/reset',{method:'POST'}); if(!res.ok) alert('reset failed'); load();}
+var TRY_KEY_STORE='flr_try_key';
+function loadTryKey(){ try{var k=document.getElementById('tryKey'); if(!k) return; var v=localStorage.getItem(TRY_KEY_STORE); if(v) k.value=v;}catch(e){} }
+function saveTryKey(){ try{var k=document.getElementById('tryKey'); if(!k) return; if(k.value.trim()) localStorage.setItem(TRY_KEY_STORE,k.value.trim()); else localStorage.removeItem(TRY_KEY_STORE);}catch(e){} }
 async function tryIt(){
   var out=document.getElementById('tryOut'); if(!out) return;
+  var keyEl=document.getElementById('tryKey');
+  var key=(keyEl&&keyEl.value?keyEl.value:'').trim();
+  saveTryKey();
   out.textContent='running…';
+  var headers={'content-type':'application/json'};
+  if(key) headers['authorization']='Bearer '+key;
   try {
-    var res=await fetch('/v1/chat/completions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:'auto',messages:[{role:'user',content:'Say hi in one word.'}],max_tokens:20})});
+    var res=await fetch('/v1/chat/completions',{method:'POST',headers:headers,credentials:'same-origin',body:JSON.stringify({model:'auto',messages:[{role:'user',content:'Say hi in one word.'}],max_tokens:20})});
     var data=await res.json();
-    out.textContent='HTTP '+res.status+'\\n'+JSON.stringify(data,null,2);
+    var head='HTTP '+res.status;
+    if(res.status===401 && !key) head+=' — paste an API key above (or sign in at /login), then run again';
+    out.textContent=head+'\\n'+JSON.stringify(data,null,2);
   } catch(e){ out.textContent='error: '+String(e); }
 }
+loadTryKey();
 load(); setAuto(true);
 </script>
 </body>

@@ -148,18 +148,23 @@ export function evaluateAcquire(
   return { rolled, result: { ok: true, ...resets } };
 }
 
-/** Set a per-model cooldown on a bucket. Returns true if state changed. */
+/**
+ * Set a per-model cooldown on a bucket. Returns true if state changed.
+ *
+ * A per-model failure (e.g. one 404'd model) must NOT overwrite the bucket's
+ * `lastError`: that field is the bucket-level health note shown per provider, so
+ * writing a model-scoped message there makes every provider look broken after a
+ * single bad model id. The cooldown itself lives in `modelCooldowns`.
+ */
 export function setModelCooldown(
   b: BucketState,
   model: string,
   until: number,
-  note?: string,
 ): boolean {
   if (!b.modelCooldowns) b.modelCooldowns = {};
   const prev = b.modelCooldowns[model] ?? 0;
   if (until > prev) {
     b.modelCooldowns[model] = until;
-    if (note) b.lastError = note;
     return true;
   }
   return false;

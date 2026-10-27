@@ -135,7 +135,8 @@ export class ProviderLimiter extends DurableObject {
       this.buckets.set(op.bucket, b);
     }
     const until = now + op.seconds * 1000;
-    setModelCooldown(b, op.model, until, op.note);
+    // Model-scoped failures must not overwrite the bucket-level health note.
+    setModelCooldown(b, op.model, until);
     this.dirty = true;
     await this.flush();
     return { ok: true, until };
