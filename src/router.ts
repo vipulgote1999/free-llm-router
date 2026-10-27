@@ -1121,6 +1121,8 @@ async function inspectChatContent(res: Response): Promise<ChatInspection> {
       choices?: {
         message?: {
           content?: unknown;
+          reasoning_content?: unknown;
+          reasoning?: unknown;
           tool_calls?: unknown;
           function_call?: unknown;
           refusal?: unknown;
@@ -1133,11 +1135,19 @@ async function inspectChatContent(res: Response): Promise<ChatInspection> {
     if (!msg) return none;
 
     const hasToolCalls = Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
+    // Thinking/reasoning models (DeepSeek R1, Qwen3 thinking, ...) may return
+    // the final answer empty while carrying reasoning_content/reasoning, or
+    // wrap reasoning in <think> tags inside content. Treat any of those as a
+    // legitimate (non-empty) completion so we don't fail over on thinking output.
+    const hasReasoning =
+      (typeof msg.reasoning_content === 'string' && msg.reasoning_content.trim() !== '') ||
+      (typeof msg.reasoning === 'string' && msg.reasoning.trim() !== '');
     const legitimate =
       hasToolCalls ||
       msg.function_call != null ||
       msg.refusal != null ||
-      choice?.finish_reason === 'length';
+      choice?.finish_reason === 'length' ||
+      hasReasoning;
     const empty =
       !legitimate &&
       (typeof msg.content === 'string' ? msg.content.trim() === '' : msg.content == null);
